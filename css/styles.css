@@ -724,6 +724,13 @@ a.lic:hover { text-decoration: underline; }
 .free-row.owned .t-title { color: var(--accent); }
 .pill .icon.inline { vertical-align: -3px; }
 
+.browse-title .src { font-size: 13px; font-weight: 600; color: var(--text-2); margin-left: 8px; letter-spacing: 0; }
+.free-row .cover.sm { width: 40px; height: 40px; }
+#jam-results { margin-bottom: 28px; }
+.src-list { margin: 0 0 14px; padding-left: 20px; color: var(--text-2); display: grid; gap: 6px; }
+.src-list a { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
+.jam-setup, .more-sources { margin-top: 8px; }
+
 /* ------------------------------------------------------------------ responsive */
 
 @media (max-width: 1280px) {

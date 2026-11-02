@@ -460,8 +460,21 @@
           Songs from big record labels are almost never free, so expect only a few matches.</span></div>
           <button class="btn btn-ghost btn-sm" data-act="free-match">Find free versions</button>
         </section>` : ''}
-        <h2 class="browse-title">${query ? `Results for “${esc(query)}”` : 'Popular free albums'}</h2>
+        <h2 class="browse-title">${query ? `Albums for “${esc(query)}”` : 'Popular free albums'} <small class="src">Internet Archive</small></h2>
         <div id="free-results"><p class="muted pad">Loading…</p></div>
+        ${F.freemusic.jamendoId() ? `<h2 class="browse-title">${query ? `Songs for “${esc(query)}”` : 'Popular this week'} <small class="src">Jamendo</small></h2>
+        <div id="jam-results"><p class="muted pad">Loading…</p></div>` : jamendoSetup()}
+        <section class="set-card more-sources">
+          <h2>${ic('folder')} Free downloads from other sites</h2>
+          <p class="lead-sm">These sites don’t let apps download for you, but you can download there and drop the files (or the whole <strong>.zip</strong>) into Freeify:</p>
+          <ul class="src-list">
+            <li><a href="https://bandcamp.com/tag/free-download" target="_blank" rel="noopener">Bandcamp</a>: many albums are “name your price”: enter 0, download as MP3, then drop the .zip here.</li>
+            <li><a href="https://freemusicarchive.org" target="_blank" rel="noopener">Free Music Archive</a>: free Creative Commons songs with a download button.</li>
+            <li><a href="https://soundcloud.com" target="_blank" rel="noopener">SoundCloud</a> and <a href="https://audiomack.com" target="_blank" rel="noopener">Audiomack</a>: only songs where the artist turned on “free download”.</li>
+          </ul>
+          <button class="btn btn-ghost btn-sm" data-act="import-files">${ic('upload')}<span>Add downloaded files or .zip</span></button>
+        </section>
+        ${F.freemusic.jamendoId() ? `<p class="fine">Jamendo is connected. <button class="link-btn" data-act="jam-remove">Remove Jamendo</button></p>` : ''}
       </div>`,
       color: 'hsl(38 55% 28%)',
       title: 'Free music',
@@ -469,7 +482,50 @@
     };
   };
 
+  function jamendoSetup() {
+    return `<section class="set-card jam-setup">
+      <h2>${ic('plus')} Add Jamendo <span class="pill">600,000+ free songs</span></h2>
+      <p class="lead-sm">Jamendo has free, legal music from independent artists. It needs a free key, once:</p>
+      <ol class="steps">
+        <li>Create a free account on the <a href="https://devportal.jamendo.com" target="_blank" rel="noopener">Jamendo developer site</a>.</li>
+        <li>Choose <strong>Create an app</strong>. Any name works, and the website can be <code>https://github.com/mrmajko123/freeify</code>.</li>
+        <li>Copy the app’s <strong>Client ID</strong> and paste it here:
+          <form class="copy-row" data-form="jam-key"><input class="input" id="jam-key" name="key" placeholder="Jamendo Client ID" autocomplete="off" spellcheck="false"><button class="btn btn-primary btn-sm" type="submit">Save</button></form></li>
+      </ol>
+      <p class="fine">Jamendo doesn’t allow downloads from inside the web version, so there you’ll get an “Open on Jamendo” button. The desktop and phone apps download directly.</p>
+    </section>`;
+  }
+
+  function freeRow(t, i, list, have, playing, opts) {
+    return `<div class="free-row${have.has(t.id) ? ' owned' : ''}" data-tid="${esc(t.id)}">
+      ${opts && opts.cover ? `<div class="cover sm"><img src="${esc(t.image)}" alt="" loading="lazy" draggable="false"></div>` : `<span class="n">${t.trackNo}</span>`}
+      <button class="icon-btn free-play${playing === t.id ? ' on' : ''}" data-act="free-preview" data-list="${list}" data-i="${i}" aria-label="Preview ${esc(t.title)}">${ic(playing === t.id ? 'pause' : 'play')}</button>
+      <div class="t-meta"><div class="t-title">${esc(t.title)}</div><div class="t-sub">${esc(t.artist)}${opts && opts.cover && t.albumId ? ` · <a class="sub-link" href="#/free/album/${encodeURIComponent(t.albumId)}">${esc(t.album)}</a>` : ''}</div></div>
+      <span class="dur">${t.duration ? U.fmtTime(t.duration) : ''}</span>
+      ${have.has(t.id) ? `<span class="got" title="In your library">${ic('check')}</span>`
+        : t.url ? `<button class="icon-btn" data-act="free-dl" data-list="${list}" data-i="${i}" aria-label="Download ${esc(t.title)}" title="Download">${ic('arrow-down')}</button>`
+          : `<a class="icon-btn" href="${esc(t.page)}" target="_blank" rel="noopener" title="The artist doesn’t allow downloads. Open it on the site" aria-label="Open ${esc(t.title)} on the site">${ic('link')}</a>`}
+    </div>`;
+  }
+
+  async function fillJamResults(root, query) {
+    const box = root.querySelector('#jam-results');
+    if (!box) return;
+    try {
+      const tracks = await F.freemusic.jamSearch(query);
+      if (!root.contains(box)) return;
+      V.freeLists = Object.assign(V.freeLists || {}, { jam: tracks });
+      const have = F.freemusic.owned();
+      box.innerHTML = tracks.length
+        ? `<div class="free-list">${tracks.map((t, i) => freeRow(t, i, 'jam', have, F.freemusic.previewing, { cover: true })).join('')}</div>`
+        : '<p class="muted pad">No songs found on Jamendo.</p>';
+    } catch (e) {
+      if (root.contains(box)) box.innerHTML = `<p class="notice">${esc(e.message)}</p>`;
+    }
+  }
+
   async function fillFreeResults(root, query) {
+    fillJamResults(root, query);
     const box = root.querySelector('#free-results');
     if (!box) return;
     try {
@@ -511,6 +567,9 @@
     }
     if (!root.contains(box)) return;
     V.freeAlbumData = a;
+    V.freeLists = Object.assign(V.freeLists || {}, { album: a.tracks });
+    const site = a.source === 'jamendo' ? 'jamendo.com' : 'archive.org';
+    const siteName = a.source === 'jamendo' ? 'Jamendo' : 'the Internet Archive';
     const have = F.freemusic.owned();
     const missing = a.tracks.filter((t) => !have.has(t.id)).length;
     const total = a.tracks.reduce((n, t) => n + (t.duration || 0), 0);
@@ -524,19 +583,12 @@
     })}
       <div class="page-body">
         <div class="action-bar">
-          ${missing ? `<button class="btn btn-primary" data-act="free-dl-album">${ic('upload')}<span>Download ${missing === a.tracks.length ? 'album' : `${missing} more`}</span></button>`
+          ${missing && a.tracks.some((t) => t.url && !have.has(t.id)) ? `<button class="btn btn-primary" data-act="free-dl-album">${ic('upload')}<span>Download ${missing === a.tracks.length ? 'album' : `${missing} more`}</span></button>`
             : `<span class="pill">${ic('check', 'inline')} In your library</span>`}
-          <a class="btn btn-ghost" href="${esc(a.page)}" target="_blank" rel="noopener">${ic('link')}<span>archive.org</span></a>
+          <a class="btn btn-ghost" href="${esc(a.page)}" target="_blank" rel="noopener">${ic('link')}<span>${site}</span></a>
         </div>
-        ${a.tracks.length ? `<div class="free-list">${a.tracks.map((t, i) => `<div class="free-row${have.has(t.id) ? ' owned' : ''}" data-tid="${esc(t.id)}">
-            <span class="n">${t.trackNo}</span>
-            <button class="icon-btn free-play${playing === t.id ? ' on' : ''}" data-act="free-preview" data-i="${i}" aria-label="Preview ${esc(t.title)}">${ic(playing === t.id ? 'pause' : 'play')}</button>
-            <div class="t-meta"><div class="t-title">${esc(t.title)}</div><div class="t-sub">${esc(t.artist)}</div></div>
-            <span class="dur">${t.duration ? U.fmtTime(t.duration) : ''}</span>
-            ${have.has(t.id) ? `<span class="got" title="In your library">${ic('check')}</span>`
-              : `<button class="icon-btn" data-act="free-dl" data-i="${i}" aria-label="Download ${esc(t.title)}" title="Download">${ic('arrow-down')}</button>`}
-          </div>`).join('')}</div>` : '<p class="empty">This album has no MP3 files to download.</p>'}
-        <p class="fine">Free under ${licenseBadge(a.license)} from the Internet Archive. Please credit the artist if you share it.</p>
+        ${a.tracks.length ? `<div class="free-list">${a.tracks.map((t, i) => freeRow(t, i, 'album', have, playing)).join('')}</div>` : '<p class="empty">This album has no MP3 files to download.</p>'}
+        <p class="fine">Free under ${licenseBadge(a.license)} from ${siteName}. Please credit the artist if you share it.</p>
       </div>`;
   }
 

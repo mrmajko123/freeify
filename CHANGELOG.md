@@ -2,6 +2,19 @@
 
 Freeify version numbers: small updates add 0.0.1 (0.1.0 → 0.1.1), big updates add 0.1 (0.1.x → 0.2.0).
 
+## 0.3.1 - 2026-11-02
+
+More free music sources.
+
+- **Jamendo**: search, preview and download 600,000+ free songs from independent artists. Needs a free
+  Jamendo Client ID (the Free music page shows how). Downloads work in the desktop and phone apps; the
+  web version offers "Open the site" because Jamendo blocks downloads from web pages
+- **.zip albums**: drop a .zip (for example a free or bought Bandcamp album) and Freeify unpacks the
+  songs and lyrics automatically
+- Tips on the Free music page for Bandcamp, Free Music Archive, SoundCloud and Audiomack, which don't
+  allow apps to download for you
+- "Find free versions of your Spotify songs" also checks Jamendo
+
 ## 0.3.0 - 2026-11-02
 
 Big update: free music, with no ads and no account.

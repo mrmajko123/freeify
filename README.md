@@ -50,6 +50,13 @@ and a link to where it came from. **Find free versions of your Spotify songs** c
 your greyed-out Spotify songs have a free release and downloads exact matches. (Most songs from big
 record labels aren't free, so expect a few matches rather than many.)
 
+**More sources:** add a free Jamendo Client ID on the Free music page to search and download from
+[Jamendo](https://www.jamendo.com)'s 600,000+ free songs (downloads work in the desktop and phone apps).
+Albums you download as a **.zip**, such as free "name your price" albums on
+[Bandcamp](https://bandcamp.com/tag/free-download), can be dropped straight into Freeify. Free Music
+Archive, SoundCloud and Audiomack don't let apps download for you, but files you download there yourself
+work the same way.
+
 ## Bring your Spotify library
 
 Open **Import** (in the **Add music** menu or Settings). Freeify can bring in your Liked Songs, your
@@ -140,7 +147,8 @@ js/db.js              IndexedDB storage
 js/library.js         Tracks, albums, artists, playlists, search, import, Spotify matching
 js/spotify.js         Spotify sign-in (PKCE), library import, data-export import
 js/artwork.js         Finds missing album covers and artist pictures
-js/freemusic.js       Free, legal music search and downloads (Internet Archive)
+js/freemusic.js       Free, legal music search and downloads (Internet Archive, Jamendo)
+js/zip.js             Unpacks .zip albums
 js/player.js          Playback engine: queue, shuffle, repeat, media keys
 js/ui.js              Shared UI pieces: track lists, cards, menus, dialogs
 js/views.js           Pages: home, search, library, album, artist, playlist, settings

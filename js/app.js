@@ -327,7 +327,7 @@
       t.year ? ['Year', t.year] : null,
       t.genre ? ['Genre', esc(t.genre)] : null,
       t.license ? ['License', `<a href="${esc(t.license)}" target="_blank" rel="noopener">${esc(F.freemusic.licenseName(t.license))}</a>`] : null,
-      t.sourceUrl ? ['Source', `<a href="${esc(t.sourceUrl)}" target="_blank" rel="noopener">${t.source === 'archive' ? 'Internet Archive' : 'Website'}</a>`] : null,
+      t.sourceUrl ? ['Source', `<a href="${esc(t.sourceUrl)}" target="_blank" rel="noopener">${{ archive: 'Internet Archive', jamendo: 'Jamendo' }[t.source] || 'Website'}</a>`] : null,
       ['Plays', (t.playCount || 0).toLocaleString()],
       ['File', `<span class="file-name">${esc(t.fileName)}</span> · ${U.fmtBytes(t.size)}`],
     ].filter(Boolean);
@@ -796,13 +796,24 @@
 
   // ---------------------------------------------------------------- free music
 
+  function freeTrack(b) {
+    const list = (V.freeLists || {})[b.dataset.list || 'album'] || [];
+    return list[+b.dataset.i];
+  }
+
   async function freeDownload(tracks, label) {
     showProgress('Downloading free music', 0, tracks.length, label || '');
     try {
       const r = await F.freemusic.download(tracks, (done, total, title) => showProgress('Downloading free music', done, total, title));
       const got = r.added + r.matched;
       if (got) toast(`Downloaded ${U.plural(got, 'song')} to your library${r.matched ? ` (${r.matched} of them from your Spotify import)` : ''}`, { action: { label: 'View', run: () => go('#/library') } });
-      else if (r.skipped && !r.failed) toast('Already in your library');
+      else if (r.skipped && !r.failed && !r.blocked && !r.notAllowed) toast('Already in your library');
+      if (r.blocked) {
+        toast(`${r.blocked > 1 ? `${r.blocked} songs` : 'This song'} can’t be downloaded in the web version (the site blocks it). Use the Freeify desktop or phone app, or download it on the site and drop the file here.`, {
+          kind: 'error', duration: 9000, action: r.blockedPage ? { label: 'Open the site', run: () => window.open(r.blockedPage, '_blank', 'noopener') } : null,
+        });
+      }
+      if (r.notAllowed) toast(`${U.plural(r.notAllowed, 'song')} can’t be downloaded: the artist only allows listening.`, { kind: 'error', duration: 6000 });
       if (r.failed) toast(`${U.plural(r.failed, 'song')} couldn’t be downloaded. Check your internet connection and try again.`, { kind: 'error', duration: 6000 });
     } catch (e) {
       toast('Download failed: ' + e.message, { kind: 'error' });
@@ -844,7 +855,25 @@
     });
   }
 
+  /** Unpack dropped .zip albums (e.g. from Bandcamp) into their songs and lyrics. */
+  async function expandZips(files) {
+    const zips = files.filter((f) => /\.zip$/i.test(f.name));
+    if (!zips.length) return files;
+    const out = files.filter((f) => !/\.zip$/i.test(f.name));
+    for (const z of zips) {
+      showProgress('Unpacking', 0, 0, z.name);
+      try {
+        out.push(...await F.zip.unpack(z, (name) => L.isAudio({ name }) || /\.lrc$/i.test(name)));
+      } catch (e) {
+        toast(`Couldn’t open ${z.name}: ${e.message}`, { kind: 'error', duration: 6000 });
+      }
+    }
+    hideProgress();
+    return out;
+  }
+
   async function doImport(files) {
+    files = await expandZips(files);
     const jsonFiles = files.filter((f) => /\.json$/i.test(f.name));
     if (jsonFiles.length) {
       await importJsonFiles(jsonFiles);
@@ -963,8 +992,9 @@
     'sp-import': () => runSpotifyImport(),
     'sp-export-files': () => { const i = $('#sp-export-input'); if (i) i.click(); },
     'art-find': () => findArtwork(),
-    'free-preview': (b) => { const a = V.freeAlbumData; if (a && a.tracks[+b.dataset.i]) F.freemusic.preview(a.tracks[+b.dataset.i]); },
-    'free-dl': (b) => { const a = V.freeAlbumData; const t = a && a.tracks[+b.dataset.i]; if (t) freeDownload([t], t.title); },
+    'free-preview': (b) => { const t = freeTrack(b); if (t) F.freemusic.preview(t); },
+    'free-dl': (b) => { const t = freeTrack(b); if (t) freeDownload([t], t.title); },
+    'jam-remove': async () => { await F.freemusic.setJamendoId(''); toast('Jamendo removed'); render(true); },
     'free-dl-album': () => { const a = V.freeAlbumData; if (a) freeDownload(a.tracks, a.title); },
     'free-match': () => findFreeVersions(),
     'toggle-local-only': () => { F.settings.localOnly = !F.settings.localOnly; store.set('localOnly', F.settings.localOnly); render(true); },
@@ -1204,6 +1234,16 @@
     document.addEventListener('contextmenu', onContextMenu);
     document.addEventListener('keydown', onKey);
     document.addEventListener('submit', (e) => {
+      const jam = e.target.closest('[data-form="jam-key"]');
+      if (jam) {
+        e.preventDefault();
+        const btn = jam.querySelector('button[type=submit]');
+        btn.disabled = true;
+        F.freemusic.setJamendoId(jam.elements.key.value)
+          .then(() => { toast('Jamendo added'); render(true); })
+          .catch((err) => { btn.disabled = false; toast(err.message, { kind: 'error', duration: 6000 }); });
+        return;
+      }
       const free = e.target.closest('[data-form="free-search"]');
       if (free) {
         e.preventDefault();

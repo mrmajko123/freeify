@@ -76,6 +76,15 @@ app.on('second-instance', () => {
 });
 
 app.whenReady().then(() => {
+  // Jamendo's download servers don't send the header that lets web pages save files, so free Jamendo
+  // downloads fail in a browser. The desktop app adds it for Jamendo responses only.
+  session.defaultSession.webRequest.onHeadersReceived({ urls: ['https://*.jamendo.com/*'] }, (details, callback) => {
+    const headers = Object.assign({}, details.responseHeaders);
+    for (const k of Object.keys(headers)) if (k.toLowerCase() === 'access-control-allow-origin') delete headers[k];
+    headers['Access-Control-Allow-Origin'] = ['*'];
+    callback({ responseHeaders: headers });
+  });
+
   // When Spotify sends the user back after sign-in, hand the code to the app instead of loading the address.
   session.defaultSession.webRequest.onBeforeRequest({ urls: [`${SPOTIFY_REDIRECT}*`] }, (details, callback) => {
     callback({ cancel: true });

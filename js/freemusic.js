@@ -64,20 +64,100 @@
   const thumb = (id) => `${IA}/services/img/${encodeURIComponent(id)}`;
   const fileUrl = (id, name) => `${IA}/download/${encodeURIComponent(id)}/${name.split('/').map(encodeURIComponent).join('/')}`;
 
-  async function getJson(url) {
+  async function getJson(url, service) {
+    service = service || 'the Internet Archive';
     let lastError;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const res = await fetch(url);
         if (res.ok) return res.json();
-        lastError = new Error(`The Internet Archive answered ${res.status}`);
+        lastError = new Error(`${service} answered ${res.status}`);
         if (res.status < 500 && res.status !== 429) break;
       } catch (e) {
-        lastError = new Error('Could not reach the Internet Archive. Check your internet connection.');
+        lastError = new Error(`Could not reach ${service}. Check your internet connection.`);
       }
       await sleep(800 * (attempt + 1));
     }
     throw lastError;
+  }
+
+  // ---------------------------------------------------------------- Jamendo (optional: needs a free Client ID)
+
+  const JAM = 'https://api.jamendo.com/v3.0';
+  const JAM_KEY = 'freeify:jamendo';
+  const jamCache = new Map();
+  const JAM_FORMATS = { audioformat: 'mp32', audiodlformat: 'mp32', imagesize: '300' };
+
+  function jamendoId() {
+    try { return localStorage.getItem(JAM_KEY) || ''; } catch (e) { return ''; }
+  }
+
+  async function jamGet(path, params, id) {
+    id = id || jamendoId();
+    if (!id) return [];
+    const key = id + path + JSON.stringify(params);
+    if (jamCache.has(key)) return jamCache.get(key);
+    const json = await getJson(`${JAM}${path}?${new URLSearchParams(Object.assign({ client_id: id, format: 'json' }, params))}`, 'Jamendo');
+    if (json.headers && json.headers.status && json.headers.status !== 'success') {
+      throw new Error(json.headers.code === 5 ? 'Jamendo didn’t accept that Client ID.' : (json.headers.error_message || 'Jamendo error'));
+    }
+    jamCache.set(key, json.results || []);
+    return json.results || [];
+  }
+
+  /** Save (or with an empty value, remove) the Jamendo Client ID after checking it works. */
+  async function setJamendoId(id) {
+    id = String(id || '').trim();
+    jamCache.clear();
+    if (!id) { try { localStorage.removeItem(JAM_KEY); } catch (e) { /* ignore */ } return; }
+    if (!/^[0-9a-z]{6,40}$/i.test(id)) throw new Error('That doesn’t look like a Jamendo Client ID.');
+    await jamGet('/tracks/', { limit: '1' }, id);
+    try { localStorage.setItem(JAM_KEY, id); } catch (e) { /* ignore */ }
+  }
+
+  const safeName = (s) => String(s || '').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+  function jamTrack(r, album) {
+    const artist = r.artist_name || (album && album.artist_name) || 'Unknown artist';
+    return {
+      id: `jam:${r.id}`,
+      source: 'jamendo',
+      title: r.name,
+      artist,
+      album: r.album_name || (album && album.name) || '',
+      albumId: r.album_id || (album && album.id) ? `jam:${r.album_id || album.id}` : null,
+      trackNo: parseInt(r.position, 10) || 0,
+      duration: r.duration || 0,
+      url: r.audiodownload_allowed !== false && r.audiodownload ? r.audiodownload : null,
+      stream: r.audio || '',
+      fileName: `${safeName(artist)} - ${safeName(r.name)}.mp3`,
+      license: r.license_ccurl || '',
+      image: r.album_image || r.image || (album && album.image) || '',
+      page: r.shareurl || `https://www.jamendo.com/track/${r.id}`,
+      year: parseInt(String(r.releasedate || (album && album.releasedate) || '').slice(0, 4), 10) || 0,
+    };
+  }
+
+  /** Songs on Jamendo matching a search; with no query, this week's most popular. */
+  async function jamSearch(query) {
+    if (!jamendoId()) return [];
+    const q = String(query || '').trim();
+    const params = Object.assign({ limit: '30' }, JAM_FORMATS, q ? { search: q } : { order: 'popularity_week' });
+    return (await jamGet('/tracks/', params)).map((r) => jamTrack(r));
+  }
+
+  async function jamAlbum(id) {
+    const rows = await jamGet('/albums/tracks/', Object.assign({ id }, JAM_FORMATS));
+    const a = rows[0];
+    if (!a) throw new Error('Jamendo couldn’t find this album.');
+    const tracks = (a.tracks || []).map((t) => jamTrack(Object.assign({ album_image: a.image, artist_name: a.artist_name, album_name: a.name, album_id: a.id, releasedate: a.releasedate }, t), a));
+    tracks.sort((x, y) => (x.trackNo || 999) - (y.trackNo || 999));
+    const license = (tracks.find((t) => t.license) || {}).license || '';
+    return {
+      id: `jam:${a.id}`, source: 'jamendo', title: a.name, artist: a.artist_name || 'Unknown artist',
+      year: parseInt(String(a.releasedate || '').slice(0, 4), 10) || 0, license, licenseName: licenseName(license),
+      image: a.image || '', page: `https://www.jamendo.com/album/${a.id}`, description: '', tracks,
+    };
   }
 
   // ---------------------------------------------------------------- search
@@ -113,6 +193,11 @@
   /** Full album with its songs (MP3 files). */
   async function album(id) {
     if (albumCache.has(id)) return albumCache.get(id);
+    if (id.startsWith('jam:')) {
+      const a = await jamAlbum(id.slice(4));
+      albumCache.set(id, a);
+      return a;
+    }
     const json = await getJson(`${IA}/metadata/${encodeURIComponent(id)}`);
     const meta = json.metadata || {};
     const license = first(meta.licenseurl);
@@ -144,12 +229,12 @@
     tracks.sort((a, b) => (a.trackNo || 999) - (b.trackNo || 999) || U.cmp(a.fileName, b.fileName));
     tracks.forEach((t, i) => { if (!t.trackNo) t.trackNo = i + 1; });
     const out = {
-      id, title: albumTitle, artist: albumArtist, year, license,
+      id, source: 'archive', title: albumTitle, artist: albumArtist, year, license,
       licenseName: licenseName(license), image: thumb(id), page: `${IA}/details/${encodeURIComponent(id)}`,
       description: plainText(first(meta.description)).slice(0, 400),
       tracks,
     };
-    tracks.forEach((t) => Object.assign(t, { license, image: out.image, page: out.page, year, albumId: id }));
+    tracks.forEach((t) => Object.assign(t, { source: 'archive', license, image: out.image, page: out.page, year, albumId: id }));
     albumCache.set(id, out);
     return out;
   }
@@ -167,22 +252,50 @@
    * Download songs into the library, one at a time. onProgress(done, total, title).
    * Returns { added, failed, matched }.
    */
+  function base64ToBlob(data) {
+    if (data instanceof Blob) return data;
+    const bin = atob(String(data).replace(/^data:[^,]*,/, ''));
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return new Blob([out], { type: 'audio/mpeg' });
+  }
+
+  /**
+   * Fetch a file. Some music hosts (Jamendo) don't let web pages save their files; the desktop app
+   * allows it, and the phone apps fall back to a native download. Throws { blocked: true } otherwise.
+   */
+  async function fetchBlob(url) {
+    try {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return await r.blob();
+    } catch (e) {
+      const native = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorHttp;
+      if (e instanceof TypeError && native && native.request) {
+        const r = await native.request({ url, method: 'GET', responseType: 'blob' });
+        if (r.status >= 400) throw new Error(`HTTP ${r.status}`);
+        return base64ToBlob(r.data);
+      }
+      if (e instanceof TypeError) { const err = new Error('The site blocked the download.'); err.blocked = true; throw err; }
+      throw e;
+    }
+  }
+
   async function download(tracks, onProgress) {
     const have = owned();
     const todo = tracks.filter((t) => !have.has(t.id));
-    const res = { added: 0, matched: 0, failed: 0, skipped: tracks.length - todo.length };
+    const res = { added: 0, matched: 0, failed: 0, blocked: 0, notAllowed: 0, blockedPage: '', skipped: tracks.length - todo.length };
     let done = 0;
     for (const t of todo) {
       if (onProgress) onProgress(done, todo.length, t.title);
+      if (!t.url) { res.notAllowed++; done++; continue; }
       try {
-        const r = await fetch(t.url);
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const blob = await r.blob();
+        const blob = await fetchBlob(t.url);
         const file = new File([blob], t.fileName || `${t.artist} - ${t.title}.mp3`, { type: 'audio/mpeg' });
         Object.defineProperty(file, 'freeMeta', {
           value: {
             title: t.title, artist: t.artist, album: t.album, trackNo: t.trackNo, year: t.year,
-            imageUrl: t.image, license: t.license, sourceUrl: t.page, sourceId: t.id, source: 'archive',
+            imageUrl: t.image, license: t.license, sourceUrl: t.page, sourceId: t.id, source: t.source || 'archive',
           },
         });
         const r2 = await L.importFiles([file]);
@@ -192,7 +305,7 @@
         if (r2.failed || r2.unsupported) res.failed++;
       } catch (e) {
         console.warn('[freeify] download failed', t.url, e);
-        res.failed++;
+        if (e.blocked) { res.blocked++; if (!res.blockedPage) res.blockedPage = t.page; } else res.failed++;
       }
       done++;
       if (onProgress) onProgress(done, todo.length, t.title);
@@ -240,11 +353,19 @@
           }
           await sleep(150);
         }
+        if (wanted.size && jamendoId()) {
+          const rows = await jamGet('/tracks/', Object.assign({ artist_name: group.artist, limit: '100' }, JAM_FORMATS));
+          for (const r of rows) {
+            const tr = jamTrack(r);
+            const k = L.matchKey(tr.title, group.artist);
+            if (tr.url && wanted.has(k) && L.matchKey('x', tr.artist) === L.matchKey('x', group.artist)) { wanted.delete(k); picks.push(tr); }
+          }
+        }
         if (picks.length) {
           out.found += picks.length;
           const r = await download(picks);
           out.added += r.added + r.matched;
-          out.failed += r.failed;
+          out.failed += r.failed + r.blocked;
         }
       } catch (e) {
         console.warn('[freeify] free version search failed for', group.artist, e);
@@ -271,7 +392,7 @@
     if (previewId === t.id && !previewAudio.paused) { previewAudio.pause(); return; }
     if (F.player && F.player.playing) F.player.pause();
     previewId = t.id;
-    previewAudio.src = t.url;
+    previewAudio.src = t.stream || t.url;
     previewAudio.play().catch(() => { previewId = null; emitPreview(); });
     emitPreview();
   }
@@ -284,6 +405,7 @@
 
   F.freemusic = {
     search, album, download, findFreeVersions, owned, licenseName,
+    jamendoId, setJamendoId, jamSearch,
     preview, stopPreview, onPreview: (fn) => previewListeners.add(fn),
     get previewing() { return previewAudio.paused ? null : previewId; },
   };
