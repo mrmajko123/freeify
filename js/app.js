@@ -49,6 +49,7 @@
     libFilter: store.get('libFilter', 'all'),
     rightTab: store.get('rightTab', 'queue'),
     rightOpen: store.get('rightOpen', false),
+    localOnly: store.get('localOnly', false),
   };
 
   let el = {};
@@ -89,6 +90,7 @@
     [/^\/artists$/, 'artists'],
     [/^\/collection$/, 'collection'],
     [/^\/settings$/, 'settings'],
+    [/^\/import$/, 'importer'],
   ];
 
   function safeDecode(s) { try { return decodeURIComponent(s); } catch (e) { return s; } }
@@ -476,6 +478,8 @@
     if (!reg) return;
     const idx = +rowEl.dataset.idx;
     const id = reg.ids[idx];
+    const t = L.get(id);
+    if (t && t.remote) { remoteToast(t); return; }
     const key = reg.ctx ? `${reg.ctx.type}:${reg.ctx.id}` : null;
     if (P.current === id && (!key || P.ctxKey === key)) { P.toggle(); return; }
     P.playContext(reg.ids, idx, reg.ctx);
@@ -511,13 +515,23 @@
     const n = ids.length;
     const one = n === 1 ? L.get(ids[0]) : null;
     const allLiked = ids.every((id) => L.get(id).likedAt);
-    const items = [
-      { label: 'Add to queue', icon: 'queue-add', run: () => { P.addToQueue(ids); toast(n > 1 ? `Added ${n} songs to the queue` : 'Added to queue'); } },
-      { label: 'Play next', icon: 'play-next', run: () => { P.playNext(ids); toast(n > 1 ? `${n} songs will play next` : 'Will play next'); } },
-      { sep: true },
+    const playable = ids.filter((id) => L.isPlayable(id));
+    const p = playable.length;
+    const items = [];
+    if (p) {
+      items.push(
+        { label: 'Add to queue', icon: 'queue-add', run: () => { P.addToQueue(playable); toast(p > 1 ? `Added ${p} songs to the queue` : 'Added to queue'); } },
+        { label: 'Play next', icon: 'play-next', run: () => { P.playNext(playable); toast(p > 1 ? `${p} songs will play next` : 'Will play next'); } },
+      );
+    }
+    if (one && (one.remote || one.spotifyId)) {
+      items.push({ label: 'Open in Spotify', icon: 'link', run: () => window.open(F.spotify.openUrl(one), '_blank', 'noopener') });
+    }
+    if (items.length) items.push({ sep: true });
+    items.push(
       { label: 'Add to playlist…', icon: 'plus', run: () => addToPlaylistFlow(ids) },
       { label: allLiked ? 'Remove from Liked Songs' : 'Save to Liked Songs', icon: allLiked ? 'heart-fill' : 'heart', run: () => { L.setLiked(ids, !allLiked); toast(allLiked ? 'Removed from Liked Songs' : 'Added to Liked Songs'); } },
-    ];
+    );
     if (o.playlistId && o.origIdxs) {
       items.push({ label: 'Remove from this playlist', icon: 'close', run: () => { L.removeFromPlaylist(o.playlistId, o.origIdxs); toast(n > 1 ? `Removed ${n} songs` : 'Removed from playlist'); } });
     }
@@ -570,6 +584,9 @@
     UI.menu(r ? r.x : 0, r ? r.y : 0, [
       { label: 'Add music files…', icon: 'upload', run: () => el.fileInput.click() },
       { label: 'Add a folder…', icon: 'folder', run: () => el.folderInput.click() },
+      { sep: true },
+      { label: 'Import from Spotify…', icon: 'link', run: () => go('#/import') },
+      { label: 'Find missing pictures', icon: 'image', run: () => findArtwork() },
     ], anchor);
   }
 
@@ -718,35 +735,98 @@
     return importChain;
   }
 
+  function showProgress(title, done, total, text) {
+    const card = el.importCard;
+    card.hidden = false;
+    const pct = total ? (done / total) * 100 : null;
+    card.innerHTML = `<div class="ic-head">${ic('upload')}<strong>${esc(title)}</strong><span>${total ? `${done} / ${total}` : ''}</span></div>
+      <div class="ic-bar${pct == null ? ' busy' : ''}"><i style="width:${pct == null ? 35 : pct}%"></i></div><div class="ic-file">${esc(text || '')}</div>`;
+  }
+  const hideProgress = () => { el.importCard.hidden = true; };
+
+  /** Spotify data-export files (YourLibrary.json, Playlist1.json…). */
+  async function importJsonFiles(jsonFiles) {
+    const docs = [];
+    for (const f of jsonFiles) {
+      try { docs.push(JSON.parse(await f.text())); } catch (e) { /* not JSON */ }
+    }
+    showProgress('Importing Spotify data', 0, 0, jsonFiles.map((f) => f.name).join(', '));
+    let stats;
+    try { stats = await F.spotify.importExport(docs); } finally { hideProgress(); }
+    if (!stats) { toast('Those files don’t look like a Spotify data export.', { kind: 'error' }); return; }
+    toast(`From Spotify: ${U.plural(stats.added, 'song')} added, ${U.plural(stats.linked, 'song')} matched to your files, ${U.plural(stats.playlists, 'playlist')}`, {
+      duration: 7000, action: { label: 'Find pictures', run: () => findArtwork() },
+    });
+  }
+
+  async function runSpotifyImport() {
+    const opts = {};
+    $$('input[name="sp-opt"]').forEach((c) => { opts[c.value] = c.checked; });
+    showProgress('Importing from Spotify', 0, 0, 'Connecting…');
+    try {
+      const r = await F.spotify.importLibrary(opts, (text, done, total) => showProgress('Importing from Spotify', done, total, text));
+      toast(`From Spotify: ${U.plural(r.added, 'song')} added, ${U.plural(r.linked, 'song')} matched to your files, ${U.plural(r.playlists, 'playlist')}, ${U.plural(r.artists, 'artist')}`, { duration: 7000 });
+      if (r.stoppedEarly) toast('Spotify’s request limit was reached, so some pictures are missing. Try “Find pictures” later.', { kind: 'error', duration: 8000 });
+    } catch (e) {
+      console.error(e);
+      toast(e.message || 'Spotify import failed.', { kind: 'error', duration: 8000 });
+    } finally {
+      hideProgress();
+      if (route.name === 'importer') render(true);
+    }
+  }
+
+  async function findArtwork() {
+    showProgress('Finding pictures', 0, 0, 'Starting…');
+    try {
+      const r = await F.artwork.findMissing((text, done, total) => showProgress('Finding pictures', done, total, text), true);
+      toast(r.checked ? `Found ${U.plural(r.covers, 'album cover')} and ${U.plural(r.pictures, 'artist picture')} (${r.source})` : 'Nothing is missing a picture.', { duration: 6000 });
+    } catch (e) {
+      toast('Picture search failed: ' + e.message, { kind: 'error' });
+    } finally {
+      hideProgress();
+      if (route.name === 'importer') render(true);
+    }
+  }
+
+  function remoteToast(t) {
+    toast(`“${t.title}” isn’t on this device yet. Add the song file to play it here.`, {
+      duration: 6000,
+      action: { label: 'Open in Spotify', run: () => window.open(F.spotify.openUrl(t), '_blank', 'noopener') },
+    });
+  }
+
   async function doImport(files) {
+    const jsonFiles = files.filter((f) => /\.json$/i.test(f.name));
+    if (jsonFiles.length) {
+      await importJsonFiles(jsonFiles);
+      files = files.filter((f) => !/\.json$/i.test(f.name));
+      if (!files.length) return;
+    }
     const audioCount = files.filter((f) => L.isAudio(f)).length;
     const lrcCount = files.filter((f) => /\.lrc$/i.test(f.name)).length;
     if (!audioCount && !lrcCount) {
       toast('No music files found. Freeify can play MP3, M4A, FLAC, OGG, Opus and WAV.', { kind: 'error', duration: 5000 });
       return;
     }
-    const card = el.importCard;
-    const paint = (done, total, name) => {
-      card.hidden = false;
-      card.innerHTML = `<div class="ic-head">${ic('upload')}<strong>Adding music</strong><span>${done} / ${total}</span></div>
-        <div class="ic-bar"><i style="width:${total ? (done / total) * 100 : 100}%"></i></div><div class="ic-file">${esc(name || '')}</div>`;
-    };
+    const paint = (done, total, name) => showProgress('Adding music', done, total, name);
     paint(0, audioCount, 'Reading files…');
     let res;
     try {
       res = await L.importFiles(files, paint);
     } finally {
-      card.hidden = true;
+      hideProgress();
     }
     if (res.quota) toast('Your browser ran out of storage space for music. Free up disk space or remove some songs.', { kind: 'error', duration: 9000 });
     const parts = [];
     if (res.added) parts.push(`Added ${U.plural(res.added, 'song')}`);
+    if (res.matched) parts.push(`${U.plural(res.matched, 'Spotify song')} now playable`);
     if (res.duplicates) parts.push(`${res.duplicates} already in your library`);
     if (res.unsupported) parts.push(`${res.unsupported} not playable in this browser`);
     if (res.failed) parts.push(`${res.failed} failed`);
     if (res.lyrics) parts.push(`lyrics added to ${U.plural(res.lyrics, 'song')}`);
     toast(parts.join(' · ') || 'Nothing new to add', {
-      kind: res.added || res.lyrics ? '' : 'error',
+      kind: res.added || res.matched || res.lyrics ? '' : 'error',
       duration: 5000,
       action: res.added && route.name !== 'library' ? { label: 'View', run: () => go('#/library') } : null,
     });
@@ -824,6 +904,18 @@
       installEvent = null;
       $('#install-btn').hidden = true;
     },
+
+    'sp-copy': (b) => {
+      const text = b.dataset.text;
+      const done = () => toast('Copied');
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, () => toast(text));
+      else toast(text);
+    },
+    'sp-disconnect': () => { F.spotify.disconnect(); toast('Disconnected from Spotify'); render(true); },
+    'sp-import': () => runSpotifyImport(),
+    'sp-export-files': () => { const i = $('#sp-export-input'); if (i) i.click(); },
+    'art-find': () => findArtwork(),
+    'toggle-local-only': () => { F.settings.localOnly = !F.settings.localOnly; store.set('localOnly', F.settings.localOnly); render(true); },
 
     'back': () => history.back(),
     'forward': () => history.forward(),
@@ -1059,6 +1151,19 @@
     document.addEventListener('dblclick', onDblClick);
     document.addEventListener('contextmenu', onContextMenu);
     document.addEventListener('keydown', onKey);
+    document.addEventListener('submit', (e) => {
+      const form = e.target.closest('[data-form="sp-connect"]');
+      if (!form) return;
+      e.preventDefault();
+      F.spotify.connect(form.elements.client.value).catch((err) => toast(err.message, { kind: 'error', duration: 6000 }));
+    });
+    document.addEventListener('change', (e) => {
+      if (e.target && e.target.id === 'sp-export-input') {
+        const files = Array.from(e.target.files || []);
+        e.target.value = '';
+        if (files.length) importJsonFiles(files);
+      }
+    });
     window.addEventListener('hashchange', () => {
       parseRoute();
       render();
@@ -1171,10 +1276,12 @@
       syncLike();
     });
 
+    const signIn = await F.spotify.handleRedirect();
     parseRoute();
     renderSidebar();
     render();
     bindStatic();
+    if (signIn) toast(signIn.message, { kind: signIn.ok ? '' : 'error', duration: 6000 });
     syncMode();
     try { await P.restore(); } catch (e) { console.warn('[freeify] could not restore player', e); }
     syncTrack();

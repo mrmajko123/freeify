@@ -29,7 +29,8 @@
       case 'playlist': {
         const p = L.playlist(id);
         if (!p) return null;
-        return { type, id, name: p.name, kind: 'Playlist', sub: `Playlist · ${U.plural(p.trackIds.length, 'song')}`, href: `#/playlist/${id}`, ids: p.trackIds.slice(), color: playlistColor(p), cover: (cls) => UI.mosaic(p.trackIds, p.id, cls) };
+        const own = p.coverId && L.coverUrl(p.coverId);
+        return { type, id, name: p.name, kind: 'Playlist', sub: `Playlist · ${U.plural(p.trackIds.length, 'song')}`, href: `#/playlist/${id}`, ids: p.trackIds.slice(), color: (own && L.coverColor(p.coverId)) || playlistColor(p), cover: (cls) => (own ? UI.cover(p.coverId, p.id, cls) : UI.mosaic(p.trackIds, p.id, cls)) };
       }
       case 'album': {
         const a = L.album(id);
@@ -39,7 +40,8 @@
       case 'artist': {
         const a = L.artist(id);
         if (!a) return null;
-        return { type, id, name: a.name, kind: 'Artist', sub: 'Artist', href: `#/artist/${id}`, ids: a.trackIds.slice(), color: L.coverColor(a.coverId) || U.seedColor(a.name), cover: (cls) => UI.cover(a.coverId, a.name, (cls || '') + ' round', 'user'), round: true };
+        const pic = a.imageId || a.coverId;
+        return { type, id, name: a.name, kind: 'Artist', sub: 'Artist', href: `#/artist/${id}`, ids: a.trackIds.slice(), color: L.coverColor(pic) || U.seedColor(a.name), cover: (cls) => UI.cover(pic, a.name, (cls || '') + ' round', 'user'), round: true };
       }
       case 'genre': {
         const g = L.genre(id);
@@ -148,9 +150,9 @@
     const num = o.number === 'track' ? (t.trackNo || idx + 1) : idx + 1;
     const artist = t.artist || 'Unknown artist';
     const artistHtml = o.artist ? `<a class="sub-link" href="#/artist/${artistId}" draggable="false">${esc(artist)}</a>` : '';
-    return `<div class="tr" data-list="${esc(key)}" data-idx="${idx}" data-id="${t.id}" draggable="true">
+    return `<div class="tr${t.remote ? ' remote' : ''}" data-list="${esc(key)}" data-idx="${idx}" data-id="${t.id}" draggable="true"${t.remote ? ' title="Not on this device yet"' : ''}>
       <div class="td num"><span class="n">${num}</span><span class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span><button class="row-play" data-act="play-row" aria-label="Play ${esc(t.title)}">${ic('play')}</button></div>
-      <div class="td col-title">${o.cover ? UI.trackCover(t, 'sm') : ''}<div class="t-meta"><div class="t-title">${esc(t.title)}</div>${artistHtml ? `<div class="t-sub">${artistHtml}</div>` : ''}</div></div>
+      <div class="td col-title">${o.cover ? UI.trackCover(t, 'sm') : ''}<div class="t-meta"><div class="t-title">${esc(t.title)}</div>${artistHtml || t.remote ? `<div class="t-sub">${t.remote ? '<span class="remote-badge" aria-label="Not on this device">' + ic('cloud') + '</span>' : ''}${artistHtml}</div>` : ''}</div></div>
       ${o.album ? `<div class="td col-album">${albumId ? `<a class="sub-link" href="#/album/${albumId}" draggable="false">${esc(t.album)}</a>` : ''}</div>` : ''}
       ${o.date ? `<div class="td col-date">${esc(U.fmtDate(t[o.date]))}</div>` : ''}
       <div class="td col-dur">
@@ -184,7 +186,7 @@
 
   /** Card for one track that plays within a registered list. */
   UI.trackCard = function (key, t, idx) {
-    return `<div class="card track-card" data-list="${esc(key)}" data-idx="${idx}" data-id="${t.id}">
+    return `<div class="card track-card${t.remote ? ' remote' : ''}" data-list="${esc(key)}" data-idx="${idx}" data-id="${t.id}">
       <div class="card-art">${UI.trackCover(t)}
         <button class="card-play" data-act="play-row" aria-label="Play ${esc(t.title)}">${ic('play')}</button>
       </div>

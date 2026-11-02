@@ -12,6 +12,7 @@
   const playlists = new Map();
   const covers = new Map();
   const coverUrls = new Map();
+  const artistInfo = new Map();   // artist id -> { id, name, coverId, spotifyId, followed }
   const fileKeys = new Set();
   const listeners = new Set();
   let recents = [];
@@ -38,11 +39,12 @@
   // ---------------------------------------------------------------- init
 
   async function init() {
-    const [t, p, c, r, order] = await Promise.all([
+    const [t, p, c, r, order, a] = await Promise.all([
       DB.getAll('tracks'), DB.getAll('playlists'), DB.getAll('covers'),
-      DB.kvGet('recents'), DB.kvGet('playlistOrder'),
+      DB.kvGet('recents'), DB.kvGet('playlistOrder'), DB.getAll('artists'),
     ]);
-    t.forEach((x) => { tracks.set(x.id, x); fileKeys.add(x.fileKey); });
+    t.forEach((x) => { tracks.set(x.id, x); if (x.fileKey) fileKeys.add(x.fileKey); });
+    a.forEach((x) => artistInfo.set(x.id, x));
     p.forEach((x) => playlists.set(x.id, x));
     c.forEach((x) => covers.set(x.id, x));
     recents = Array.isArray(r) ? r : [];
@@ -134,11 +136,42 @@
     let url = coverUrls.get(id);
     if (!url) {
       const c = covers.get(id);
-      if (!c || !c.blob) return null;
-      url = URL.createObjectURL(c.blob);
+      if (!c) return null;
+      if (c.blob) url = URL.createObjectURL(c.blob);
+      else if (c.url) url = c.url;
+      else return null;
       coverUrls.set(id, url);
     }
     return url;
+  }
+
+  /** A cover that lives on the web (Spotify, Wikipedia). Returns its id, creating it if needed. */
+  function urlCover(url, pending) {
+    if (!url) return null;
+    const id = 'u' + U.hash(url);
+    if (!covers.has(id) && !pending.has(id)) pending.set(id, { id, url, color: null });
+    return id;
+  }
+
+  /** Work out tint colours for web covers in the background (needs CORS-enabled images). */
+  async function fillCoverColors(list) {
+    let n = 0;
+    for (const c of list) {
+      if (c.color || !c.url) continue;
+      try {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.src = c.url;
+        await img.decode();
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 32;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(img, 0, 0, 32, 32);
+        c.color = averageColor(ctx, 32, 32);
+        if (c.color) { await DB.put('covers', c); n++; }
+      } catch (e) { /* image unavailable or not CORS-enabled: keep default colour */ }
+    }
+    if (n) changed();
   }
 
   const coverColor = (id) => (id && covers.has(id) ? covers.get(id).color : null);
@@ -194,7 +227,48 @@
     return AUDIO_EXT.test(f.name) || (f.type && f.type.indexOf('audio/') === 0);
   }
 
-  async function importOne(file, lrcs, usedLrc) {
+  // ---------------------------------------------------------------- matching (Spotify songs <-> your files)
+
+  function normTitle(s) {
+    return U.fold(s)
+      .replace(/\s*[(\[][^)\]]*[)\]]/g, ' ')
+      .replace(/\s+-\s+.*\b(remaster(ed)?|version|edit|live|mix|mono|stereo|deluxe|acoustic|radio)\b.*$/, '')
+      .replace(/[^a-z0-9]+/g, '');
+  }
+
+  function normArtist(s) {
+    const first = U.fold(s).split(/\s*(?:,|&|;|\/|\bfeat\.?|\bft\.?|\bfeaturing)\s*/)[0] || '';
+    return first.replace(/^the\s+/, '').replace(/[^a-z0-9]+/g, '');
+  }
+
+  function matchKey(title, artist) {
+    const t = normTitle(title);
+    return t ? `${t}|${normArtist(artist)}` : null;
+  }
+
+  function matchIndex(onlyRemote) {
+    const bySp = new Map(), byIsrc = new Map(), byKey = new Map();
+    for (const t of tracks.values()) {
+      if (onlyRemote && !t.remote) continue;
+      if (t.spotifyId) bySp.set(t.spotifyId, t);
+      else if (t.spotifyUri) bySp.set(t.spotifyUri, t);
+      if (t.isrc) byIsrc.set(t.isrc.toUpperCase(), t);
+      const k = matchKey(t.title, primaryArtist(t));
+      if (k && (!byKey.has(k) || (byKey.get(k).remote && !t.remote))) byKey.set(k, t);
+    }
+    return { bySp, byIsrc, byKey };
+  }
+
+  function takeMatch(idx, isrc, title, artist) {
+    const t = (isrc && idx.byIsrc.get(isrc.toUpperCase())) || idx.byKey.get(matchKey(title, artist));
+    if (!t) return null;
+    // Remove from the index so two files never claim the same song.
+    if (t.isrc) idx.byIsrc.delete(t.isrc.toUpperCase());
+    idx.byKey.delete(matchKey(t.title, primaryArtist(t)));
+    return t;
+  }
+
+  async function importOne(file, lrcs, usedLrc, remoteIdx) {
     const fileKey = `${file.name}|${file.size}`;
     if (fileKeys.has(fileKey)) return 'duplicates';
     fileKeys.add(fileKey);
@@ -206,6 +280,26 @@
       let lyrics = tags.lyrics || '';
       const base = U.baseName(file.name);
       if (lrcs.has(base)) { lyrics = await lrcs.get(base).text(); usedLrc.add(base); }
+      const storeFile = file instanceof Blob ? file : new Blob([file]);
+
+      // A song imported from Spotify earlier? Give it this file instead of adding a duplicate.
+      const remote = takeMatch(remoteIdx, tags.isrc, tags.title || guess.title, tags.artist || guess.artist || '');
+      if (remote) {
+        Object.assign(remote, {
+          remote: false,
+          duration: duration || remote.duration,
+          fileName: file.name, fileKey, size: file.size, mime: file.type || '',
+          coverId: cover ? cover.id : remote.coverId,
+          hasLyrics: remote.hasLyrics || !!lyrics,
+          isrc: remote.isrc || tags.isrc || '',
+          genre: remote.genre || tags.genre || '',
+        });
+        await DB.addTrack(remote, storeFile, cover && !covers.has(cover.id) ? cover : null, lyrics);
+        if (cover) covers.set(cover.id, cover);
+        changed();
+        return 'matched';
+      }
+
       const track = {
         id: U.uid(),
         title: tags.title || guess.title,
@@ -219,6 +313,7 @@
         duration: duration || 0,
         coverId: cover ? cover.id : null,
         hasLyrics: !!lyrics,
+        isrc: tags.isrc || '',
         fileName: file.name,
         fileKey,
         size: file.size,
@@ -228,7 +323,6 @@
         playCount: 0,
         lastPlayed: 0,
       };
-      const storeFile = file instanceof Blob ? file : new Blob([file]);
       await DB.addTrack(track, storeFile, cover && !covers.has(cover.id) ? cover : null, lyrics);
       if (cover) covers.set(cover.id, cover);
       tracks.set(track.id, track);
@@ -252,8 +346,9 @@
       if (/\.lrc$/i.test(f.name)) lrcs.set(U.baseName(f.name), f);
       else if (isAudio(f)) audio.push(f);
     }
-    const res = { added: 0, duplicates: 0, unsupported: 0, failed: 0, lyrics: 0, quota: false, total: audio.length, ignored: all.length - audio.length - lrcs.size };
+    const res = { added: 0, matched: 0, duplicates: 0, unsupported: 0, failed: 0, lyrics: 0, quota: false, total: audio.length, ignored: all.length - audio.length - lrcs.size };
     const usedLrc = new Set();
+    const remoteIdx = matchIndex(true);
     importing = true;
     let done = 0;
     const queue = audio.slice().sort((a, b) => U.cmp(a.webkitRelativePath || a.relPath || a.name, b.webkitRelativePath || b.relPath || b.name));
@@ -261,7 +356,7 @@
       while (queue.length) {
         const f = queue.shift();
         try {
-          res[await importOne(f, lrcs, usedLrc)]++;
+          res[await importOne(f, lrcs, usedLrc, remoteIdx)]++;
         } catch (e) {
           console.error('[freeify] import failed', f.name, e);
           res.failed++;
@@ -308,6 +403,7 @@
   }
 
   function primaryArtist(t) {
+    if (t.artists && t.artists.length) return t.artists[0];
     const name = (t.artist || t.albumArtist || '').split(/\s+(?:feat\.?|ft\.?|featuring|with)\s+/i)[0].trim();
     return name || 'Unknown artist';
   }
@@ -372,6 +468,10 @@
       // Prefer the cover of the artist's own album for their picture.
       const own = [...a.albumIds].map((id) => albumsById.byId.get(id)).find((al) => al && al.coverId && al.artist.toLowerCase() === a.name.toLowerCase());
       if (own) a.coverId = own.coverId;
+      const info = artistInfo.get(a.id);
+      a.imageId = info && info.coverId && covers.has(info.coverId) ? info.coverId : null;
+      a.spotifyId = info ? info.spotifyId || null : null;
+      a.local = a.trackIds.some((id) => !tracks.get(id).remote);
     });
     list.sort((a, b) => U.cmp(a.name, b.name));
     artistCache = { list, byId: new Map(list.map((a) => [a.id, a])), byName: m };
@@ -513,15 +613,17 @@
     const set = new Set(ids);
     for (const id of set) {
       const t = tracks.get(id);
-      if (t) { fileKeys.delete(t.fileKey); tracks.delete(id); }
+      if (t) { if (t.fileKey) fileKeys.delete(t.fileKey); tracks.delete(id); }
     }
     const used = new Set();
     for (const t of tracks.values()) if (t.coverId) used.add(t.coverId);
+    for (const p of playlists.values()) if (p.coverId) used.add(p.coverId);
+    for (const a of artistInfo.values()) if (a.coverId) used.add(a.coverId);
     const orphans = [...covers.keys()].filter((c) => !used.has(c));
     await DB.removeTracks([...set], orphans);
     orphans.forEach((c) => {
       covers.delete(c);
-      if (coverUrls.has(c)) { URL.revokeObjectURL(coverUrls.get(c)); coverUrls.delete(c); }
+      if (coverUrls.has(c)) { if (coverUrls.get(c).startsWith('blob:')) URL.revokeObjectURL(coverUrls.get(c)); coverUrls.delete(c); }
     });
     const touched = [];
     for (const p of playlists.values()) {
@@ -642,11 +744,160 @@
   }
 
   async function wipe() {
-    coverUrls.forEach((u) => URL.revokeObjectURL(u));
+    coverUrls.forEach((u) => { if (u.startsWith('blob:')) URL.revokeObjectURL(u); });
     await DB.destroy();
   }
 
+  // ---------------------------------------------------------------- Spotify import
+
+  /**
+   * Merge songs, likes, playlists and artists from Spotify into the library.
+   * data = { tracks: [{ ref, spotifyId, spotifyUri, isrc, title, artists[], album, albumArtist, trackNo,
+   *                     discNo, year, duration, imageUrl, addedAt }],
+   *          liked: [{ ref, at }], playlists: [{ spotifyId, name, description, imageUrl, refs[] }],
+   *          artists: [{ spotifyId, name, imageUrl, followed }] }
+   * Songs you already have as files are linked (and get missing covers/info); others are added as
+   * "not on this device" until you add their files.
+   */
+  async function addSpotify(data) {
+    const idx = matchIndex(false);
+    const pending = new Map();
+    const dirty = new Map();
+    const refToId = new Map();
+    const stats = { added: 0, linked: 0, updated: 0, liked: 0, playlists: 0, artists: 0 };
+
+    for (const s of data.tracks || []) {
+      if (!s || !s.ref || refToId.has(s.ref)) continue;
+      const artists = (s.artists || []).filter(Boolean);
+      const coverId = urlCover(s.imageUrl, pending);
+      let t = idx.bySp.get(s.spotifyId || s.ref) || (s.isrc && idx.byIsrc.get(s.isrc.toUpperCase())) || idx.byKey.get(matchKey(s.title, artists[0] || ''));
+      if (t && t.remote) {
+        Object.assign(t, {
+          title: s.title || t.title, artist: artists.join(', ') || t.artist, artists: artists.length ? artists : t.artists,
+          album: s.album || t.album, albumArtist: s.albumArtist || t.albumArtist, trackNo: s.trackNo || t.trackNo,
+          discNo: s.discNo || t.discNo, year: s.year || t.year, duration: s.duration || t.duration,
+          coverId: coverId || t.coverId, isrc: s.isrc || t.isrc || '',
+        });
+        stats.updated++;
+      } else if (t) {
+        // A real file: keep its own tags and only fill the gaps.
+        if (!t.album && s.album) { t.album = s.album; if (!t.albumArtist) t.albumArtist = s.albumArtist || ''; }
+        if (!t.year && s.year) t.year = s.year;
+        if (!t.trackNo && s.trackNo) t.trackNo = s.trackNo;
+        if (!t.coverId && coverId) t.coverId = coverId;
+        if (!t.isrc && s.isrc) t.isrc = s.isrc;
+        stats.linked++;
+      } else {
+        t = {
+          id: U.uid(), title: s.title || 'Unknown song', artist: artists.join(', '), artists,
+          album: s.album || '', albumArtist: s.albumArtist || '', trackNo: s.trackNo || 0, discNo: s.discNo || 0,
+          year: s.year || 0, genre: '', duration: s.duration || 0, coverId, hasLyrics: false, isrc: s.isrc || '',
+          fileName: '', fileKey: null, size: 0, mime: '', remote: true,
+          addedAt: s.addedAt || Date.now(), likedAt: 0, playCount: 0, lastPlayed: 0,
+        };
+        tracks.set(t.id, t);
+        if (t.isrc) idx.byIsrc.set(t.isrc.toUpperCase(), t);
+        const k = matchKey(t.title, artists[0] || '');
+        if (k && !idx.byKey.has(k)) idx.byKey.set(k, t);
+        stats.added++;
+      }
+      if (s.spotifyId && !t.spotifyId) t.spotifyId = s.spotifyId;
+      if (s.spotifyUri && !t.spotifyUri) t.spotifyUri = s.spotifyUri;
+      if (t.spotifyId) idx.bySp.set(t.spotifyId, t);
+      idx.bySp.set(s.ref, t);
+      dirty.set(t.id, t);
+      refToId.set(s.ref, t.id);
+    }
+
+    for (const l of data.liked || []) {
+      const t = tracks.get(refToId.get(l.ref));
+      if (t && !t.likedAt) { t.likedAt = l.at || Date.now(); dirty.set(t.id, t); stats.liked++; }
+    }
+
+    const plDirty = [];
+    for (const p of data.playlists || []) {
+      const seen = new Set();
+      const ids = [];
+      for (const ref of p.refs || []) {
+        const id = refToId.get(ref);
+        if (id && !seen.has(id)) { seen.add(id); ids.push(id); }
+      }
+      let pl = [...playlists.values()].find((x) => x.source === 'spotify' && (p.spotifyId ? x.spotifyId === p.spotifyId : x.name === p.name));
+      const coverId = urlCover(p.imageUrl, pending);
+      if (pl) Object.assign(pl, { name: p.name || pl.name, description: p.description || '', trackIds: ids, coverId: coverId || pl.coverId || null, updatedAt: Date.now() });
+      else {
+        pl = { id: U.uid(), name: p.name || 'Spotify playlist', description: p.description || '', trackIds: ids, createdAt: Date.now(), updatedAt: Date.now(), source: 'spotify', spotifyId: p.spotifyId || null, coverId };
+        playlists.set(pl.id, pl);
+        playlistOrder.push(pl.id);
+      }
+      plDirty.push(pl);
+      stats.playlists++;
+    }
+
+    const artDirty = [];
+    for (const a of data.artists || []) {
+      if (!a || !a.name) continue;
+      const id = artistIdByName(a.name);
+      const cur = artistInfo.get(id) || { id, name: a.name };
+      if (a.spotifyId) cur.spotifyId = a.spotifyId;
+      const cid = urlCover(a.imageUrl, pending);
+      if (cid) cur.coverId = cid;
+      if (a.followed) cur.followed = true;
+      artistInfo.set(id, cur);
+      artDirty.push(cur);
+      stats.artists++;
+    }
+
+    const newCovers = [...pending.values()];
+    newCovers.forEach((c) => covers.set(c.id, c));
+    await DB.putMany('covers', newCovers);
+    await DB.putMany('tracks', [...dirty.values()]);
+    await DB.putMany('playlists', plDirty);
+    await DB.putMany('artists', artDirty);
+    await DB.kvSet('playlistOrder', playlistOrder);
+    changed(true);
+    fillCoverColors(newCovers);
+    return stats;
+  }
+
+  /** Give every song of an album that has no cover this web cover. */
+  async function setAlbumCover(albumId, url) {
+    const a = album(albumId);
+    if (!a || !url) return false;
+    const pending = new Map();
+    const cid = urlCover(url, pending);
+    const dirty = a.trackIds.map((id) => tracks.get(id)).filter((t) => t && !t.coverId);
+    dirty.forEach((t) => { t.coverId = cid; });
+    const newCovers = [...pending.values()];
+    newCovers.forEach((c) => covers.set(c.id, c));
+    await DB.putMany('covers', newCovers);
+    await DB.putMany('tracks', dirty);
+    changed();
+    fillCoverColors(newCovers);
+    return true;
+  }
+
+  async function setArtistImage(name, url, spotifyId) {
+    if (!name || !url) return false;
+    const pending = new Map();
+    const id = artistIdByName(name);
+    const cur = artistInfo.get(id) || { id, name };
+    cur.coverId = urlCover(url, pending);
+    if (spotifyId) cur.spotifyId = spotifyId;
+    artistInfo.set(id, cur);
+    const newCovers = [...pending.values()];
+    newCovers.forEach((c) => covers.set(c.id, c));
+    await DB.putMany('covers', newCovers);
+    await DB.put('artists', cur);
+    changed();
+    fillCoverColors(newCovers);
+    return true;
+  }
+
+  const isPlayable = (id) => { const t = tracks.get(id); return !!t && !t.remote; };
+
   F.library = {
+    addSpotify, setAlbumCover, setArtistImage, isPlayable, matchKey,
     init, on: (fn) => listeners.add(fn), changed,
     importFiles, isAudio,
     get, all, count, byAdded, liked, albums, artists, album, artist, albumIdOf, artistIdOf, artistIdByName, primaryArtist,

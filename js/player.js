@@ -62,7 +62,7 @@
     S.pos = typeof st.pos === 'number' ? st.pos : -1;
     S.queue = Array.isArray(st.queue) ? st.queue : [];
     S.fromQueue = !!st.fromQueue;
-    const missing = new Set([...S.list, ...S.queue].filter((id) => !L.get(id)));
+    const missing = new Set([...S.list, ...S.queue].filter((id) => !L.isPlayable(id)));
     if (missing.size) purge(missing, true);
     if (st.current && L.get(st.current)) {
       await load(st.current, false, tm && tm.id === st.current ? tm.time : 0);
@@ -123,8 +123,10 @@
   // ---------------------------------------------------------------- transport
 
   function playContext(ids, start, context) {
-    ids = (ids || []).filter((id) => L.get(id));
-    if (!ids.length) return;
+    const startId = typeof start === 'number' && start >= 0 ? (ids || [])[start] : null;
+    ids = (ids || []).filter((id) => L.isPlayable(id));
+    if (!ids.length) { emit('error', 'None of these songs are on this device yet. Add their files to play them.'); return; }
+    if (startId) start = ids.indexOf(startId);
     S.list = ids.slice();
     S.context = context || null;
     S.fromQueue = false;
@@ -266,13 +268,13 @@
   // ---------------------------------------------------------------- queue
 
   function addToQueue(ids) {
-    S.queue.push(...ids.filter((id) => L.get(id)));
+    S.queue.push(...ids.filter((id) => L.isPlayable(id)));
     if (!S.current && S.queue.length) { next(); return; }
     emit('queue'); saveState();
   }
 
   function playNext(ids) {
-    S.queue.unshift(...ids.filter((id) => L.get(id)));
+    S.queue.unshift(...ids.filter((id) => L.isPlayable(id)));
     if (!S.current && S.queue.length) { next(); return; }
     emit('queue'); saveState();
   }

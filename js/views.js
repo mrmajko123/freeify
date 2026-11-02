@@ -29,6 +29,7 @@
         <button class="btn btn-primary btn-lg" data-act="import-files">${ic('upload')}<span>Add music files</span></button>
         <button class="btn btn-ghost btn-lg" data-act="import-folder">${ic('folder')}<span>Add a folder</span></button>
       </div>
+      <p class="hint"><a class="text-link" href="#/import">Import your playlists, likes, covers and artist pictures from Spotify</a></p>
       <p class="hint">Or drag and drop songs and folders anywhere on this window.</p>
       <ul class="perks">
         <li>${ic('gift')}<div><strong>Free, for real</strong><span>No trials, no premium tier, no ads. Open source under the MIT license.</span></div></li>
@@ -104,7 +105,8 @@
   function collectionPage(c, opts) {
     const ids = opts.ids || c.ids;
     const total = L.totals(ids);
-    const meta = opts.meta || `${U.plural(ids.length, 'song')}${ids.length ? `, <span class="muted">${U.fmtLong(total)}</span>` : ''}`;
+    const away = ids.filter((id) => !L.isPlayable(id)).length;
+    const meta = opts.meta || `${U.plural(ids.length, 'song')}${ids.length ? `, <span class="muted">${U.fmtLong(total)}</span>` : ''}${away ? ` · <span class="muted">${away === ids.length ? 'not on this device yet' : `${away} not on this device`}</span>` : ''}`;
     const list = UI.trackList(opts.listKey || `${c.type}:${c.id}`, ids, Object.assign({ ctx: UI.ctxRef(c) }, opts.list || {}));
     return {
       html: `<div class="page collection">
@@ -124,9 +126,15 @@
   V.library = function () {
     const c = UI.ctx('library');
     if (!L.count()) return { html: welcome(), color: c.color, title: 'Your Music' };
+    const remote = c.ids.filter((id) => !L.isPlayable(id)).length;
+    const localOnly = remote > 0 && F.settings.localOnly;
+    const ids = localOnly ? c.ids.filter((id) => L.isPlayable(id)) : c.ids;
     return collectionPage(c, {
+      ids,
       list: { date: 'addedAt' },
-      extraActions: `<button class="btn btn-ghost" data-act="import-menu">${ic('plus')}<span>Add music</span></button>`,
+      meta: remote ? `${U.plural(c.ids.length, 'song')} · ${U.plural(c.ids.length - remote, 'song')} on this device` : null,
+      extraActions: `<button class="btn btn-ghost" data-act="import-menu">${ic('plus')}<span>Add music</span></button>
+        ${remote ? `<button class="chip${localOnly ? ' on' : ''}" data-act="toggle-local-only">On this device only</button>` : ''}`,
     });
   };
 
@@ -191,7 +199,9 @@
     const a = L.album(id);
     const artistId = L.artistIdByName(a.artist);
     const artistHtml = L.artist(artistId) ? `<a href="#/artist/${artistId}"><strong>${esc(a.artist)}</strong></a>` : `<strong>${esc(a.artist)}</strong>`;
-    const meta = `${artistHtml}${a.year ? ` · ${a.year}` : ''} · ${U.plural(a.trackIds.length, 'song')}, <span class="muted">${U.fmtLong(a.duration)}</span>`;
+    const away = a.trackIds.filter((x) => !L.isPlayable(x)).length;
+    const awayHtml = away ? ` · <span class="muted">${away === a.trackIds.length ? 'not on this device yet' : `${away} not on this device`}</span>` : '';
+    const meta = `${artistHtml}${a.year ? ` · ${a.year}` : ''} · ${U.plural(a.trackIds.length, 'song')}, <span class="muted">${U.fmtLong(a.duration)}</span>${awayHtml}`;
     const more = L.artist(artistId) ? L.artist(artistId).albumIds : new Set();
     const others = [...more].filter((x) => x !== id).map((x) => L.album(x)).filter(Boolean);
     return collectionPage(c, {
@@ -385,6 +395,8 @@
           <h2>Library &amp; storage</h2>
           <div class="set-row"><div><strong>${U.plural(songs, 'song')}</strong><span id="storage-line">Checking storage…</span></div>
             <button class="btn btn-ghost btn-sm" data-act="import-menu">${ic('plus')}<span>Add music</span></button></div>
+          <div class="set-row"><div><strong>Import from Spotify</strong><span>Playlists, likes, album covers and artist pictures.</span></div>
+            <a class="btn btn-ghost btn-sm" href="#/import">Open</a></div>
           <div class="set-row"><div><strong>Keep my library safe</strong><span id="persist-line">Ask the browser not to clear your music when space runs low.</span></div>
             <button class="btn btn-ghost btn-sm" data-act="persist">Protect</button></div>
           <div class="set-row"><div><strong>Remove all music</strong><span>Deletes every song, playlist and like stored by Freeify on this device.</span></div>
@@ -419,6 +431,86 @@
           }
         } catch (e) { if (line) line.textContent = ''; }
       },
+    };
+  };
+
+  // ---------------------------------------------------------------- import (Spotify + artwork)
+
+  V.importer = function () {
+    const sp = F.spotify;
+    const st = sp.state();
+    const info = sp.redirectInfo();
+    const last = st.lastImport;
+    const miss = F.artwork.missing();
+    const steps = (uri) => `<ol class="steps">
+        <li>Open the <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">Spotify Developer Dashboard</a>, log in, and click <strong>Create app</strong>. Any name and description will do.</li>
+        <li>Under <strong>Redirect URIs</strong>, add this address exactly:
+          <div class="copy-row"><code id="redirect-uri">${esc(uri)}</code><button class="btn btn-ghost btn-sm" data-act="sp-copy" data-text="${esc(uri)}">Copy</button></div></li>
+        <li>Tick <strong>Web API</strong>, accept the terms and save. Then open the app's <strong>Settings</strong> and copy its <strong>Client ID</strong>.</li>
+        <li>Paste the Client ID here and connect:
+          <form class="copy-row" data-form="sp-connect"><input class="input" id="sp-client" name="client" placeholder="Client ID (32 letters and numbers)" value="${esc(st.clientId || '')}" autocomplete="off" spellcheck="false"><button class="btn btn-primary btn-sm" type="submit">Connect</button></form></li>
+      </ol>
+      <p class="fine">Spotify only lets an account with Premium create these developer apps. No Premium? Use the data export below instead: it's free.</p>`;
+
+    let connectHtml;
+    if (sp.connected()) {
+      connectHtml = `<div class="sp-status">${ic('check')}<span>Connected${st.user ? ` as <strong>${esc(st.user.name)}</strong>` : ''}</span><button class="link-btn" data-act="sp-disconnect">Disconnect</button></div>
+        <div class="checks">
+          ${[['liked', 'Liked Songs'], ['playlists', 'Your playlists'], ['albums', 'Saved albums'], ['artists', 'Artists you follow'], ['pictures', 'Artist pictures']]
+            .map(([k, label]) => `<label class="check"><input type="checkbox" name="sp-opt" value="${k}" checked><span>${label}</span></label>`).join('')}
+        </div>
+        <button class="btn btn-primary" data-act="sp-import">${ic('upload')}<span>Import from Spotify</span></button>`;
+    } else if (info.uri) {
+      connectHtml = steps(info.uri);
+    } else {
+      const why = {
+        phone: 'Signing in to Spotify isn’t available in the phone app yet. Use the data export below, or import on the desktop app or website.',
+        file: 'Spotify sign-in needs Freeify to run from a web address. Use the desktop app, the GitHub Pages website, or run <code>npm start</code> and open <code>http://127.0.0.1:8080</code>. Or use the data export below.',
+        localhost: `Spotify doesn’t accept “localhost”. Open <a href="${esc(location.href.replace('//localhost', '//127.0.0.1'))}">this page on 127.0.0.1</a> instead.`,
+        insecure: 'Spotify sign-in needs a secure (https) address. Use the GitHub Pages website or the desktop app, or the data export below.',
+      }[info.reason];
+      connectHtml = `<p class="notice">${why}</p>`;
+    }
+
+    const lastHtml = last ? `<p class="fine">Last import ${esc(U.fmtDate(last.at))}: ${U.plural(last.added || 0, 'new song')}, ${U.plural(last.linked || 0, 'song')} matched to your files, ${U.plural(last.playlists || 0, 'playlist')}, ${U.plural(last.artists || 0, 'artist')}.${last.skippedPlaylists && last.skippedPlaylists.length ? ` ${U.plural(last.skippedPlaylists.length, 'playlist')} made by other people couldn’t be read (Spotify only shares playlists you own or collaborate on).` : ''}</p>` : '';
+
+    return {
+      html: `<div class="page importer">
+        <h1 class="page-title">Import</h1>
+        <section class="set-card">
+          <h2>${ic('link')} Connect your Spotify account</h2>
+          <p class="lead-sm">Brings in your Liked Songs, your playlists, saved albums and followed artists, with album covers and artist pictures.</p>
+          ${connectHtml}
+          ${lastHtml}
+        </section>
+        <section class="set-card">
+          <h2>${ic('folder')} Import a Spotify data export <span class="pill">Free, no Premium</span></h2>
+          <ol class="steps">
+            <li>On spotify.com open <a href="https://www.spotify.com/account/privacy/" target="_blank" rel="noopener">Account → Privacy settings</a> and request <strong>Account data</strong>.</li>
+            <li>Spotify emails you a download link (usually within a few days). Unzip it.</li>
+            <li>Add <code>YourLibrary.json</code> and the <code>Playlist…json</code> files here (or drop them on the window).</li>
+          </ol>
+          <button class="btn btn-ghost" data-act="sp-export-files">${ic('upload')}<span>Choose export files</span></button>
+          <input type="file" id="sp-export-input" accept=".json,application/json" multiple hidden>
+        </section>
+        <section class="set-card">
+          <h2>${ic('image')} Find missing covers and artist pictures</h2>
+          <p class="lead-sm">${miss.albums.length || miss.artists.length
+            ? `${U.plural(miss.albums.length, 'album')} without a cover and ${U.plural(miss.artists.length, 'artist')} without a picture.`
+            : 'Every album has a cover and every artist has a picture.'}
+            Looks them up on ${sp.connected() ? 'Spotify, then Wikipedia' : 'Wikipedia'}.</p>
+          <button class="btn btn-ghost" data-act="art-find"${miss.albums.length || miss.artists.length ? '' : ' disabled'}>${ic('search')}<span>Find pictures</span></button>
+        </section>
+        <section class="set-card about">
+          <h2>Why don’t Spotify songs play right away?</h2>
+          <p>Spotify’s audio is copy-protected and licensed only for Spotify’s own apps, so no app can legally download it.
+            Freeify brings in everything else: names, playlists, likes, covers and pictures. Songs that aren’t on this device yet
+            are shown greyed out with ${ic('cloud', 'inline')} and can be opened in Spotify. Add your own files for them (songs you bought,
+            CDs you ripped, free downloads) and Freeify matches them automatically.</p>
+        </section>
+      </div>`,
+      color: 'hsl(150 35% 22%)',
+      title: 'Import',
     };
   };
 

@@ -29,12 +29,13 @@
     TPOS: 'disc', TPA: 'disc',
     TYER: 'year', TYE: 'year', TDRC: 'year', TDOR: 'year', TORY: 'year',
     TCON: 'genre', TCO: 'genre',
+    TSRC: 'isrc', TRC: 'isrc',
   };
 
   const VORBIS_MAP = {
     TITLE: 'title', ARTIST: 'artist', ALBUM: 'album', ALBUMARTIST: 'albumArtist', 'ALBUM ARTIST': 'albumArtist',
     TRACKNUMBER: 'track', DISCNUMBER: 'disc', DATE: 'year', YEAR: 'year', ORIGINALDATE: 'year', GENRE: 'genre',
-    LYRICS: 'lyrics', UNSYNCEDLYRICS: 'lyrics',
+    LYRICS: 'lyrics', UNSYNCEDLYRICS: 'lyrics', ISRC: 'isrc',
   };
 
   const syncsafe = (b, o) => ((b[o] & 0x7f) << 21) | ((b[o + 1] & 0x7f) << 14) | ((b[o + 2] & 0x7f) << 7) | (b[o + 3] & 0x7f);
@@ -289,6 +290,7 @@
       genre: cleanGenre(raw.genre),
       picture: raw.picture || null,
       lyrics: raw.lyrics || '',
+      isrc: (raw.isrc || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase(),
     };
   }
 

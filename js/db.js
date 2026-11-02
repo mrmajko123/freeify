@@ -3,8 +3,8 @@
   'use strict';
 
   const NAME = 'freeify';
-  const VERSION = 1;
-  const STORES = ['tracks', 'files', 'covers', 'lyrics', 'playlists', 'kv'];
+  const VERSION = 2;
+  const STORES = ['tracks', 'files', 'covers', 'lyrics', 'playlists', 'kv', 'artists'];
   let dbPromise = null;
 
   function open() {

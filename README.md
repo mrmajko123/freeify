@@ -41,6 +41,24 @@ Get the latest version from the **[Releases page](https://github.com/mrmajko123/
 The release notes explain the one-time warnings you may see, because the installers are not
 code-signed (signing certificates cost money).
 
+## Bring your Spotify library
+
+Open **Import** (in the **Add music** menu or Settings). Freeify can bring in your Liked Songs, your
+playlists, saved albums and followed artists, with album covers and artist pictures:
+
+- **Connect your Spotify account**: create a free app on the
+  [Spotify Developer Dashboard](https://developer.spotify.com/dashboard), add the redirect address
+  Freeify shows you, and paste the app's Client ID. (Spotify requires the developer app's owner to
+  have Premium, and only shares playlists you own or collaborate on.) Works on the website (https or
+  `http://127.0.0.1`) and in the desktop app.
+- **Import a data export** (free, no Premium): request your data under Spotify's
+  *Account → Privacy settings*, then add `YourLibrary.json` and the `Playlist…json` files.
+
+Spotify's audio is copy-protected and licensed only for Spotify's apps, so Freeify imports everything
+except the sound itself. Songs you don't have yet show greyed out (with "Open in Spotify"); add your own
+files for them and Freeify matches them automatically. **Find missing pictures** fills in album covers
+and artist pictures from Spotify or Wikipedia.
+
 ## Use it
 
 ### Option 1: open it directly
@@ -110,7 +128,9 @@ index.html            App shell
 css/styles.css        All styles
 js/tags.js            ID3 / FLAC metadata and LRC lyrics parser
 js/db.js              IndexedDB storage
-js/library.js         Tracks, albums, artists, playlists, search, import
+js/library.js         Tracks, albums, artists, playlists, search, import, Spotify matching
+js/spotify.js         Spotify sign-in (PKCE), library import, data-export import
+js/artwork.js         Finds missing album covers and artist pictures
 js/player.js          Playback engine: queue, shuffle, repeat, media keys
 js/ui.js              Shared UI pieces: track lists, cards, menus, dialogs
 js/views.js           Pages: home, search, library, album, artist, playlist, settings

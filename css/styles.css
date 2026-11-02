@@ -666,6 +666,42 @@ body.full-open .app { visibility: hidden; }
 .ic-bar i { display: block; height: 100%; background: var(--accent); transition: width .2s; }
 .ic-file { margin-top: 8px; color: var(--text-2); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+/* ------------------------------------------------------------------ songs that aren't on this device */
+
+.tr.remote .t-title, .tr.remote .td.num .n, .tr.remote .col-album, .tr.remote .col-date, .tr.remote .dur { opacity: .5; }
+.tr.remote .cover { opacity: .55; filter: grayscale(.35); }
+.tr.remote .row-play { opacity: .6; }
+.remote-badge { display: inline-flex; vertical-align: -3px; margin-right: 5px; color: var(--text-3); }
+.remote-badge .icon { width: 15px; height: 15px; }
+.track-card.remote .card-art .cover { opacity: .55; filter: grayscale(.35); }
+.track-card.remote .card-title { color: var(--text-2); }
+.icon.inline { display: inline-block; width: 16px; height: 16px; vertical-align: -3px; }
+
+/* ------------------------------------------------------------------ import page */
+
+.importer { max-width: 860px; }
+.importer .set-card h2 { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.importer .set-card h2 > .icon { color: var(--accent); }
+.lead-sm { color: var(--text-2); margin-bottom: 14px; }
+.steps { margin: 0 0 14px; padding-left: 22px; color: var(--text-2); display: grid; gap: 10px; }
+.steps li::marker { color: var(--accent); font-weight: 800; }
+.steps strong { color: var(--text); }
+.steps a, .text-link, .fine a, .notice a { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
+.copy-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+.copy-row code { background: var(--elev-3); padding: 7px 10px; border-radius: 4px; font-size: 13px; color: var(--text); word-break: break-all; }
+.copy-row .input { flex: 1; min-width: 220px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .92em; }
+.fine { color: var(--text-3); font-size: 13px; margin-top: 12px; }
+.notice { background: rgba(255, 255, 255, .06); border-radius: 8px; padding: 12px 14px; color: var(--text-2); }
+.pill { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent); }
+.sp-status { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.sp-status .icon { color: var(--accent); }
+.checks { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-bottom: 16px; }
+.check { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; color: var(--text-2); }
+.check input { accent-color: var(--accent); width: 16px; height: 16px; }
+.ic-bar.busy i { animation: busy 1.1s ease-in-out infinite; }
+@keyframes busy { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }
+
 /* ------------------------------------------------------------------ responsive */
 
 @media (max-width: 1280px) {
