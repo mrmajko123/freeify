@@ -397,6 +397,8 @@
             <button class="btn btn-ghost btn-sm" data-act="import-menu">${ic('plus')}<span>Add music</span></button></div>
           <div class="set-row"><div><strong>Import from Spotify</strong><span>Playlists, likes, album covers and artist pictures.</span></div>
             <a class="btn btn-ghost btn-sm" href="#/import">Open</a></div>
+          <div class="set-row"><div><strong>Download free versions automatically</strong><span>When a song in your library that isn’t on this device is released for free (Internet Archive, Jamendo), download it without asking.</span></div>
+            <label class="switch"><input type="checkbox" id="auto-free"${F.settings.autoFree ? ' checked' : ''}><span class="slider" aria-hidden="true"></span><span class="sr-only">Download free versions automatically</span></label></div>
           <div class="set-row"><div><strong>Keep my library safe</strong><span id="persist-line">Ask the browser not to clear your music when space runs low.</span></div>
             <button class="btn btn-ghost btn-sm" data-act="persist">Protect</button></div>
           <div class="set-row"><div><strong>Remove all music</strong><span>Deletes every song, playlist and like stored by Freeify on this device.</span></div>
@@ -457,7 +459,8 @@
         ${remote ? `<section class="set-card free-match">
           <div><strong>Find free versions of your Spotify songs</strong>
           <span>${U.plural(remote, 'song')} aren’t on this device. Freeify can look for free, legal releases of the same songs and download them.
-          Songs from big record labels are almost never free, so expect only a few matches.</span></div>
+          Songs from big record labels are almost never free, so expect only a few matches.
+          ${F.settings.autoFree ? 'Freeify also does this automatically in the background. You can turn that off in <a class="text-link" href="#/settings">Settings</a>.' : ''}</span></div>
           <button class="btn btn-ghost btn-sm" data-act="free-match">Find free versions</button>
         </section>` : ''}
         <h2 class="browse-title">${query ? `Albums for “${esc(query)}”` : 'Popular free albums'} <small class="src">Internet Archive</small></h2>

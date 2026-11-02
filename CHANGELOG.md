@@ -2,6 +2,16 @@
 
 Freeify version numbers: small updates add 0.0.1 (0.1.0 → 0.1.1), big updates add 0.1 (0.1.x → 0.2.0).
 
+## 0.3.2 - 2026-11-02
+
+- **Automatic free downloads**: when a song in your library that isn't on this device (for example
+  from your Spotify albums, playlists or likes) is released for free on the Internet Archive or
+  Jamendo, Freeify now downloads it by itself, without asking. It checks a few seconds after start-up,
+  right after a Spotify import, when you add Jamendo, when you come back online, and every 6 hours
+- Only exact matches (same song title and artist) from freely licensed sources are downloaded
+- Artists that were checked recently are skipped, so it doesn't keep searching the same songs
+- Turn it off or on in Settings → "Download free versions automatically"
+
 ## 0.3.1 - 2026-11-02
 
 More free music sources.

@@ -1,6 +1,6 @@
 {
   "name": "freeify",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "description": "A free, private, Spotify-style music player for the MP3s you already own. No ads, no accounts, no build step.",
   "license": "MIT",

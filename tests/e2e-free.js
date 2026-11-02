@@ -102,12 +102,19 @@ async function mockArchive(ctx, log) {
   check((await page.textContent('#free-results')).includes('CC0'), 'license shown on album cards');
   await snap(page, 'free-01-popular.png');
 
-  // Find free versions of the greyed-out songs.
-  await page.click('[data-act="free-match"]');
-  await page.waitForSelector('.toast:has-text("Found and downloaded 1 free song out of 2")', { timeout: 20000 });
+  // Free versions of greyed-out songs download automatically, without asking.
+  await page.waitForSelector('.toast:has-text("Automatically downloaded 1 free song from your library")', { timeout: 20000 });
   const lake = await song('Lake Song');
-  check(lake && !lake.remote && lake.license === CC_BY && lake.source === 'archive', 'free version found, downloaded and linked to the Spotify song');
+  check(lake && !lake.remote && lake.license === CC_BY && lake.source === 'archive', 'free version downloaded automatically and linked to the Spotify song');
   check((await song('Big Chart Hit')).remote, 'songs without a free release stay greyed out');
+  const creatorSearches = () => log.search.filter((q) => q.startsWith('creator:')).length;
+  const before = creatorSearches();
+  await L(() => window.Freeify.app.autoFree());
+  check(creatorSearches() === before, 'the automatic check doesn’t search again for artists it checked recently');
+  // The button still checks everything on request.
+  await page.click('[data-act="free-match"]');
+  await page.waitForSelector('.toast:has-text("Checked 1 song: none of them are released for free.")', { timeout: 20000 });
+  check(creatorSearches() === before + 1, 'the Find free versions button checks again');
 
   // Search.
   await page.fill('#free-q', 'lakeside (live)');
@@ -169,6 +176,27 @@ async function mockArchive(ctx, log) {
   await page.reload();
   await page.waitForFunction(() => window.Freeify.library && window.Freeify.library.count() === 4);
   check((await song('Last Tram')).license === CC_BY, 'downloads persisted after reload');
+
+  // With automatic downloads turned off, nothing downloads until it's switched back on.
+  const ctx2 = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  await ctx2.addInitScript(() => { if (!sessionStorage.getItem('seeded')) { localStorage.setItem('freeify:autoFree', 'false'); sessionStorage.setItem('seeded', '1'); } });
+  await mockArchive(ctx2, { search: [], downloads: [] });
+  const p2 = await ctx2.newPage();
+  p2.on('pageerror', (e) => errors.push('pageerror (auto off): ' + e.message));
+  await p2.goto(BASE);
+  await p2.waitForSelector('.welcome');
+  await p2.setInputFiles('#file-input', [{ name: 'YourLibrary.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(yourLibrary)) }]);
+  await p2.waitForFunction(() => window.Freeify.library.count() === 2);
+  await p2.waitForTimeout(3500);
+  check(await p2.evaluate(() => window.Freeify.library.all().every((t) => t.remote)), 'no automatic downloads when the setting is off');
+  await p2.goto(BASE + '#/settings');
+  await p2.waitForSelector('#auto-free');
+  check(!(await p2.isChecked('#auto-free')), 'Settings shows automatic downloads off');
+  await p2.click('.switch');
+  await p2.waitForSelector('.toast:has-text("Automatically downloaded 1 free song")', { timeout: 20000 });
+  check(true, 'switching it on downloads free versions straight away');
+  await snap(p2, 'free-04-settings.png');
+  await ctx2.close();
 
   console.log('\nerrors:', errors.length ? errors : 'none');
   if (errors.length) process.exitCode = 1;

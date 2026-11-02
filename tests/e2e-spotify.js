@@ -82,6 +82,8 @@ async function mockNetwork(ctx, log) {
     if (!body) return route.fulfill({ status: 404, headers: CORS, contentType: 'application/json', body: '{"error":{"status":404,"message":"not found"}}' });
     return route.fulfill({ headers: CORS, contentType: 'application/json', body: JSON.stringify(body) });
   });
+  // Automatic free downloads look songs up on archive.org: keep that offline and empty here.
+  await ctx.route('https://archive.org/**', (route) => route.fulfill({ headers: CORS, contentType: 'application/json', body: '{"response":{"numFound":0,"docs":[]}}' }));
   await ctx.route('https://i.scdn.co/**', (route) => route.fulfill({ headers: CORS, contentType: 'image/png', body: png(200, 60, 120) }));
   await ctx.route('https://upload.wikimedia.org/**', (route) => route.fulfill({ headers: CORS, contentType: 'image/png', body: png(40, 160, 220) }));
   await ctx.route('https://en.wikipedia.org/w/api.php**', (route) => {

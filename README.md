@@ -50,6 +50,9 @@ and a link to where it came from. **Find free versions of your Spotify songs** c
 your greyed-out Spotify songs have a free release and downloads exact matches. (Most songs from big
 record labels aren't free, so expect a few matches rather than many.)
 
+**Automatic:** whenever a greyed-out song in your library has a free, legal release on the Internet
+Archive or Jamendo, Freeify downloads it in the background without asking (turn this off in Settings).
+
 **More sources:** add a free Jamendo Client ID on the Free music page to search and download from
 [Jamendo](https://www.jamendo.com)'s 600,000+ free songs (downloads work in the desktop and phone apps).
 Albums you download as a **.zip**, such as free "name your price" albums on

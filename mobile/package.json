@@ -1,6 +1,6 @@
 {
   "name": "freeify-mobile",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "description": "Android and iPhone builds of Freeify (Capacitor).",
   "license": "MIT",

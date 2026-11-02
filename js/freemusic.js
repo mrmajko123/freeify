@@ -319,7 +319,16 @@
    * For songs that aren't on this device (e.g. imported from Spotify), look for the same song by the
    * same artist released for free, and download exact matches. Most commercial songs won't be found.
    */
-  async function findFreeVersions(onProgress) {
+  const CHECKED_KEY = 'freeChecked';
+  const RECHECK_AFTER = 7 * 86400000;
+
+  /**
+   * opts.force: check every artist again. Otherwise artists checked in the last 7 days are skipped
+   * unless new songs by them were added since (used by the automatic background check).
+   */
+  async function findFreeVersions(onProgress, opts) {
+    opts = opts || {};
+    const checked = (await F.db.kvGet(CHECKED_KEY).catch(() => null)) || {};
     const remote = L.all().filter((t) => t.remote);
     const byArtist = new Map();
     for (const t of remote) {
@@ -329,12 +338,20 @@
       if (!byArtist.has(key)) byArtist.set(key, { artist, songs: [] });
       byArtist.get(key).songs.push(t);
     }
-    const artists = [...byArtist.values()];
-    const out = { checked: remote.length, artists: artists.length, found: 0, added: 0, failed: 0 };
+    const now = Date.now();
+    const sources = jamendoId() ? 'ia+jam' : 'ia';
+    const artists = [...byArtist.entries()]
+      .filter(([key, g]) => {
+        const c = checked[key];
+        return opts.force || !c || now - c.at > RECHECK_AFTER || c.n !== g.songs.length || c.src !== sources;
+      })
+      .map(([key, g]) => Object.assign(g, { key }));
+    const out = { checked: remote.length, artists: artists.length, skippedArtists: byArtist.size - artists.length, found: 0, added: 0, failed: 0, blocked: 0, blockedPage: '' };
     let i = 0;
     for (const group of artists) {
       i++;
       if (onProgress) onProgress(i - 1, artists.length, group.artist);
+      let ok = true;
       try {
         const params = new URLSearchParams({ q: `creator:("${clean(group.artist)}") AND mediatype:audio AND ${LICENSED}`, rows: '15', output: 'json' });
         FIELDS.forEach((f) => params.append('fl[]', f));
@@ -365,13 +382,20 @@
           out.found += picks.length;
           const r = await download(picks);
           out.added += r.added + r.matched;
-          out.failed += r.failed + r.blocked;
+          out.failed += r.failed;
+          out.blocked += r.blocked;
+          if (!out.blockedPage) out.blockedPage = r.blockedPage;
+          if (r.failed) ok = false;
         }
       } catch (e) {
+        ok = false;
         console.warn('[freeify] free version search failed for', group.artist, e);
       }
+      // Remember the check (unless it failed, so it is retried next time).
+      if (ok) checked[group.key] = { at: Date.now(), n: group.songs.length, src: sources };
       await sleep(150);
     }
+    await F.db.kvSet(CHECKED_KEY, checked).catch(() => {});
     if (onProgress) onProgress(artists.length, artists.length, '');
     return out;
   }

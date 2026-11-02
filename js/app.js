@@ -50,6 +50,7 @@
     rightTab: store.get('rightTab', 'queue'),
     rightOpen: store.get('rightOpen', false),
     localOnly: store.get('localOnly', false),
+    autoFree: store.get('autoFree', true),
   };
 
   let el = {};
@@ -759,6 +760,7 @@
     let stats;
     try { stats = await F.spotify.importExport(docs); } finally { hideProgress(); }
     if (!stats) { toast('Those files don’t look like a Spotify data export.', { kind: 'error' }); return; }
+    scheduleAutoFree(1500);
     toast(`From Spotify: ${U.plural(stats.added, 'song')} added, ${U.plural(stats.linked, 'song')} matched to your files, ${U.plural(stats.playlists, 'playlist')}`, {
       duration: 7000, action: { label: 'Find pictures', run: () => findArtwork() },
     });
@@ -772,6 +774,7 @@
       const r = await F.spotify.importLibrary(opts, (text, done, total) => showProgress('Importing from Spotify', done, total, text));
       toast(`From Spotify: ${U.plural(r.added, 'song')} added, ${U.plural(r.linked, 'song')} matched to your files, ${U.plural(r.playlists, 'playlist')}, ${U.plural(r.artists, 'artist')}`, { duration: 7000 });
       if (r.stoppedEarly) toast('Spotify’s request limit was reached, so some pictures are missing. Try “Find pictures” later.', { kind: 'error', duration: 8000 });
+      scheduleAutoFree(1500);
     } catch (e) {
       console.error(e);
       toast(e.message || 'Spotify import failed.', { kind: 'error', duration: 8000 });
@@ -823,18 +826,58 @@
     }
   }
 
+  let freeRunning = false;
+  let autoFreeTimer = null;
+  let blockedNoticeShown = false;
+
+  function blockedToast(r) {
+    toast(`${U.plural(r.blocked, 'free song')} from Jamendo can only be downloaded in the Freeify desktop or phone app.`, {
+      kind: 'error', duration: 8000, action: r.blockedPage ? { label: 'Open the site', run: () => window.open(r.blockedPage, '_blank', 'noopener') } : null,
+    });
+  }
+
   async function findFreeVersions() {
+    if (freeRunning) { toast('Already looking for free versions…'); return; }
+    freeRunning = true;
     showProgress('Looking for free versions', 0, 0, 'Starting…');
     try {
-      const r = await F.freemusic.findFreeVersions((done, total, artist) => showProgress('Looking for free versions', done, total, artist));
+      const r = await F.freemusic.findFreeVersions((done, total, artist) => showProgress('Looking for free versions', done, total, artist), { force: true });
       toast(r.added
         ? `Found and downloaded ${U.plural(r.added, 'free song')} out of ${r.checked}.`
         : `Checked ${U.plural(r.checked, 'song')}: none of them are released for free.`, { duration: 7000 });
+      if (r.blocked) blockedToast(r);
     } catch (e) {
       toast('Search failed: ' + e.message, { kind: 'error' });
     } finally {
+      freeRunning = false;
       hideProgress();
       if (route.name === 'free') render(true);
+    }
+  }
+
+  /** Download free versions of greyed-out songs automatically, in the background, without asking. */
+  function scheduleAutoFree(delay) {
+    if (!F.settings.autoFree) return;
+    clearTimeout(autoFreeTimer);
+    autoFreeTimer = setTimeout(runAutoFree, delay == null ? 4000 : delay);
+  }
+
+  async function runAutoFree() {
+    if (!F.settings.autoFree || freeRunning || navigator.onLine === false) return;
+    if (!L.all().some((t) => t.remote)) return;
+    freeRunning = true;
+    try {
+      const r = await F.freemusic.findFreeVersions(null, { force: false });
+      if (r.added) {
+        toast(`Automatically downloaded ${U.plural(r.added, 'free song')} from your library`, {
+          duration: 7000, action: { label: 'View', run: () => go('#/library') },
+        });
+      }
+      if (r.blocked && !blockedNoticeShown) { blockedNoticeShown = true; blockedToast(r); }
+    } catch (e) {
+      console.warn('[freeify] automatic free downloads failed', e);
+    } finally {
+      freeRunning = false;
     }
   }
 
@@ -1240,7 +1283,7 @@
         const btn = jam.querySelector('button[type=submit]');
         btn.disabled = true;
         F.freemusic.setJamendoId(jam.elements.key.value)
-          .then(() => { toast('Jamendo added'); render(true); })
+          .then(() => { toast('Jamendo added'); render(true); scheduleAutoFree(1000); })
           .catch((err) => { btn.disabled = false; toast(err.message, { kind: 'error', duration: 6000 }); });
         return;
       }
@@ -1257,6 +1300,13 @@
       F.spotify.connect(form.elements.client.value).catch((err) => toast(err.message, { kind: 'error', duration: 6000 }));
     });
     document.addEventListener('change', (e) => {
+      if (e.target && e.target.id === 'auto-free') {
+        F.settings.autoFree = e.target.checked;
+        store.set('autoFree', e.target.checked);
+        toast(e.target.checked ? 'Free versions will download automatically' : 'Automatic downloads turned off');
+        scheduleAutoFree(500);
+        return;
+      }
       if (e.target && e.target.id === 'sp-export-input') {
         const files = Array.from(e.target.files || []);
         e.target.value = '';
@@ -1389,6 +1439,9 @@
     syncMode();
     if (F.settings.rightOpen && !isMobile()) toggleRight(F.settings.rightTab, true);
     document.body.classList.add('ready');
+    scheduleAutoFree(8000);
+    setInterval(() => scheduleAutoFree(0), 6 * 3600 * 1000);
+    window.addEventListener('online', () => scheduleAutoFree(3000));
 
     bindNativeShell();
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !window.Capacitor) {
@@ -1396,7 +1449,7 @@
     }
   }
 
-  F.app = { importFiles, render, route: () => route };
+  F.app = { importFiles, render, route: () => route, autoFree: runAutoFree };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
