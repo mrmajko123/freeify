@@ -1,0 +1,22 @@
+{
+  "name": "freeify-mobile",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Android and iPhone builds of Freeify (Capacitor).",
+  "license": "MIT",
+  "scripts": {
+    "prepare-web": "node ../scripts/prepare-web.js www",
+    "android": "npm run prepare-web && npx cap add android && npx capacitor-assets generate --android && npx cap sync android",
+    "ios": "npm run prepare-web && npx cap add ios && npx capacitor-assets generate --ios && npx cap sync ios"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/app": "^7.0.0",
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/ios": "^7.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^7.0.0"
+  }
+}

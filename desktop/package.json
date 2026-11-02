@@ -1,0 +1,84 @@
+{
+  "name": "freeify-desktop",
+  "productName": "Freeify",
+  "version": "0.1.0",
+  "description": "A free, private music player for the music you own.",
+  "main": "main.js",
+  "private": true,
+  "license": "MIT",
+  "homepage": "https://github.com/mrmajko123/freeify",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mrmajko123/freeify.git"
+  },
+  "author": {
+    "name": "Freeify contributors",
+    "email": "freeify@users.noreply.github.com"
+  },
+  "scripts": {
+    "prepare-web": "node ../scripts/prepare-web.js www",
+    "start": "npm run prepare-web && electron .",
+    "dist": "npm run prepare-web && electron-builder --publish never"
+  },
+  "devDependencies": {
+    "electron": "^38.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "io.github.mrmajko123.freeify",
+    "productName": "Freeify",
+    "copyright": "Freeify contributors, MIT license",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "www/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Freeify-Setup-${version}-Windows-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Freeify"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.music",
+      "identity": null,
+      "artifactName": "Freeify-${version}-macOS-${arch}.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "AudioVideo",
+      "synopsis": "Free music player for the music you own",
+      "maintainer": "Freeify contributors <freeify@users.noreply.github.com>",
+      "artifactName": "Freeify-${version}-Linux-${arch}.${ext}",
+      "executableName": "freeify"
+    },
+    "publish": null
+  }
+}

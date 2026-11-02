@@ -2,3 +2,11 @@ node_modules/
 tests/.fixtures/
 tests/.screenshots/
 .DS_Store
+build/
+desktop/www/
+desktop/dist/
+desktop/node_modules/
+mobile/www/
+mobile/android/
+mobile/ios/
+mobile/node_modules/

@@ -398,7 +398,8 @@
           <h2>About Freeify</h2>
           <p>Freeify is a free and open-source music player for the songs you own. There are no ads, no accounts,
             no tracking and no paid tier. Your music is stored only in this browser on this device.</p>
-          <p class="muted">Released under the MIT license.</p>
+          <p class="muted">Version ${esc(F.VERSION || '')} · Released under the MIT license.</p>
+          <p><a class="btn btn-ghost btn-sm" href="https://github.com/mrmajko123/freeify/releases/latest" target="_blank" rel="noopener">Get the apps for Windows, Mac, Linux, Android and iPhone</a></p>
         </section>
       </div>`,
       color: 'hsl(220 10% 24%)',

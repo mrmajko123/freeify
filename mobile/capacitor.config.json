@@ -1,0 +1,14 @@
+{
+  "appId": "io.github.mrmajko123.freeify",
+  "appName": "Freeify",
+  "webDir": "www",
+  "backgroundColor": "#000000",
+  "android": {
+    "backgroundColor": "#000000"
+  },
+  "ios": {
+    "backgroundColor": "#000000",
+    "contentInset": "never",
+    "scheme": "Freeify"
+  }
+}

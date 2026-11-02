@@ -1117,6 +1117,22 @@
     bindDrop();
   }
 
+  /** Extra behaviour when running inside the Android / iPhone app. */
+  function bindNativeShell() {
+    const cap = window.Capacitor;
+    const AppPlugin = cap && cap.Plugins && cap.Plugins.App;
+    if (!AppPlugin || !AppPlugin.addListener) return;
+    document.documentElement.classList.add('native-app');
+    AppPlugin.addListener('backButton', (ev) => {
+      if (!$('#menu').hidden) { UI.closeMenu(); return; }
+      if (el.dialog.open) { el.dialog.close(); return; }
+      if (!el.full.hidden) { closeFull(); return; }
+      if (!el.right.hidden && isMobile()) { toggleRight(null, false); return; }
+      if (ev && ev.canGoBack !== false && history.length > 1 && route.name !== 'home') history.back();
+      else if (AppPlugin.minimizeApp) AppPlugin.minimizeApp(); else if (AppPlugin.exitApp) AppPlugin.exitApp();
+    });
+  }
+
   function fatal(msg) {
     document.getElementById('view').innerHTML = `<div class="page"><div class="empty-state">${ic('note')}<h3>Freeify can't start</h3><p>${esc(msg)}</p></div></div>`;
   }
@@ -1166,7 +1182,8 @@
     if (F.settings.rightOpen && !isMobile()) toggleRight(F.settings.rightTab, true);
     document.body.classList.add('ready');
 
-    if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+    bindNativeShell();
+    if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !window.Capacitor) {
       navigator.serviceWorker.register('sw.js').catch((e) => console.warn('[freeify] service worker not registered', e));
     }
   }

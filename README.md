@@ -25,6 +25,22 @@ single web app with zero dependencies and no build step: open `index.html` and s
 - **Works offline and installs as an app** (PWA) when served over http(s).
 - Edit song details and lyrics, multi-select with Shift/Ctrl, right-click menus, six accent colours.
 
+## Download
+
+Get the latest version from the **[Releases page](https://github.com/mrmajko123/freeify/releases/latest)**:
+
+| Device | Download |
+| --- | --- |
+| Windows | `Freeify-Setup-…-Windows-x64.exe` |
+| Mac | `…-macOS-arm64.dmg` (Apple chip) or `…-macOS-x64.dmg` (Intel) |
+| Linux | `.AppImage` or `.deb` |
+| Android | `.apk` |
+| iPhone / iPad | unsigned `.ipa` for sideloading, or use the web version with **Add to Home Screen** |
+| Any browser | `…-Web.zip`: unzip and open `index.html` |
+
+The release notes explain the one-time warnings you may see, because the installers are not
+code-signed (signing certificates cost money).
+
 ## Use it
 
 ### Option 1: open it directly
@@ -100,6 +116,9 @@ js/ui.js              Shared UI pieces: track lists, cards, menus, dialogs
 js/views.js           Pages: home, search, library, album, artist, playlist, settings
 js/app.js             Routing, player bar, queue panel, input handling
 sw.js                 Offline cache
+desktop/              Windows / macOS / Linux app (Electron)
+mobile/               Android / iPhone app (Capacitor)
+scripts/              Version bump and packaging helpers
 tests/                End-to-end browser test and fixture generator
 ```
 
@@ -117,7 +136,22 @@ npm test
 
 Set `SCREENSHOTS=1` to save screenshots to `tests/.screenshots/`.
 
-When you change app files, bump `CACHE` in `sw.js` so installed copies pick up the update.
+## Versions and releases
+
+Version numbers follow a simple rule: small updates add 0.0.1 (0.1.0 → 0.1.1) and big updates add
+0.1 (0.1.x → 0.2.0). Change the version with:
+
+```bash
+node scripts/bump.js patch   # small update
+node scripts/bump.js minor   # big update
+```
+
+This updates every file that contains the version and adds a section to `CHANGELOG.md` for you to
+fill in. When a new version is pushed, the **Release** workflow runs the tests, builds the Windows,
+macOS, Linux, Android and iPhone apps, and publishes them as a GitHub Release.
+
+Desktop apps use [Electron](https://www.electronjs.org) (`desktop/`); the phone apps use
+[Capacitor](https://capacitorjs.com) (`mobile/`, see `mobile/README.md` for Android signing).
 
 ## License
 
