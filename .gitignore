@@ -2,7 +2,7 @@ node_modules/
 tests/.fixtures/
 tests/.screenshots/
 .DS_Store
-build/
+/build/
 desktop/www/
 desktop/dist/
 desktop/node_modules/
