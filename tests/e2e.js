@@ -204,9 +204,23 @@ function check(cond, msg) { if (!cond) { console.log('FAIL:', msg); process.exit
   await page.waitForSelector('#right .np-panel');
   await snap(page, '12-nowplaying.png');
 
-  // Auto-advance at end of track with queue
+  // Auto-advance at end of track goes to the queued song. Set up the queue here so earlier
+  // steps (where short test songs may finish and use up the queue) can't affect it.
+  await page.evaluate(() => {
+    const L = window.Freeify.library;
+    const P = window.Freeify.player;
+    const city = L.all().find((x) => x.title === 'City Lights');
+    const next = L.all().find((x) => x.title === 'Afterglow');
+    P.clearQueue();
+    P.playContext([city.id], 0, null);
+    P.addToQueue([next.id]);
+  });
+  await page.waitForFunction(() => {
+    const P = window.Freeify.player;
+    return P.playing && window.Freeify.library.get(P.current).title === 'City Lights' && P.duration > 1;
+  }, null, { timeout: 10000 });
   await page.evaluate(() => { const P = window.Freeify.player; P.seek(P.duration - 0.3); });
-  await page.waitForFunction(() => window.Freeify.library.get(window.Freeify.player.current).title !== 'City Lights', null, { timeout: 8000 });
+  await page.waitForFunction(() => window.Freeify.library.get(window.Freeify.player.current).title === 'Afterglow', null, { timeout: 10000 });
   check(true, 'auto advances to queued song at track end');
 
   // Settings

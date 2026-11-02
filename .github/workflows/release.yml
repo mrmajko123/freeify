@@ -2,14 +2,10 @@
 # package.json has not been released yet. Bump the version with `node scripts/bump.js patch|minor`.
 name: Release
 
+# Runs on every push; the first job stops straight away when this version is already released.
 on:
   push:
     branches: [main, 'claude/**']
-    paths:
-      - package.json
-      - .github/workflows/release.yml
-      - desktop/**
-      - mobile/**
   workflow_dispatch:
 
 permissions:
