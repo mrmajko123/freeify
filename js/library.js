@@ -276,7 +276,17 @@
       const [tags, duration] = await Promise.all([F.tags.parse(file), probeDuration(file)]);
       if (duration < 0) { fileKeys.delete(fileKey); return 'unsupported'; }
       const guess = fromPath(file);
-      const cover = tags.picture ? await makeCover(tags.picture) : null;
+      // Free downloads carry the details shown in Freeify (title, artist, cover, license...).
+      const fm = file.freeMeta || null;
+      if (fm) {
+        ['title', 'artist', 'album', 'trackNo', 'year'].forEach((k) => { if (fm[k]) tags[k] = fm[k]; });
+      }
+      let cover = tags.picture ? await makeCover(tags.picture) : null;
+      if (!cover && fm && fm.imageUrl) {
+        const id = 'u' + U.hash(fm.imageUrl);
+        cover = covers.get(id) || { id, url: fm.imageUrl, color: null };
+      }
+      const origin = fm ? { license: fm.license || '', sourceUrl: fm.sourceUrl || '', sourceId: fm.sourceId || '', source: fm.source || '' } : {};
       let lyrics = tags.lyrics || '';
       const base = U.baseName(file.name);
       if (lrcs.has(base)) { lyrics = await lrcs.get(base).text(); usedLrc.add(base); }
@@ -289,11 +299,12 @@
           remote: false,
           duration: duration || remote.duration,
           fileName: file.name, fileKey, size: file.size, mime: file.type || '',
-          coverId: cover ? cover.id : remote.coverId,
+          coverId: cover && !(cover.url && remote.coverId) ? cover.id : remote.coverId,
           hasLyrics: remote.hasLyrics || !!lyrics,
           isrc: remote.isrc || tags.isrc || '',
           genre: remote.genre || tags.genre || '',
-        });
+        }, origin);
+        if (remote.coverId && cover && cover.url && covers.has(remote.coverId)) cover = null; // keep the existing cover
         await DB.addTrack(remote, storeFile, cover && !covers.has(cover.id) ? cover : null, lyrics);
         if (cover) covers.set(cover.id, cover);
         changed();
@@ -323,6 +334,7 @@
         playCount: 0,
         lastPlayed: 0,
       };
+      Object.assign(track, origin);
       await DB.addTrack(track, storeFile, cover && !covers.has(cover.id) ? cover : null, lyrics);
       if (cover) covers.set(cover.id, cover);
       tracks.set(track.id, track);

@@ -2,6 +2,19 @@
 
 Freeify version numbers: small updates add 0.0.1 (0.1.0 → 0.1.1), big updates add 0.1 (0.1.x → 0.2.0).
 
+## 0.3.0 - 2026-11-02
+
+Big update: free music, with no ads and no account.
+
+- **Free music** page: search and download songs that artists released under Creative Commons or
+  public-domain licenses on the Internet Archive. Real files that stay in your library and play offline
+- Album pages with a preview button for every song, single-song downloads and "Download album"
+- **Find free versions of your Spotify songs**: looks for free, legal releases of greyed-out songs and
+  downloads exact matches, which then play like any other song
+- Each downloaded song keeps its license and a link to its source, shown under "About this song"
+- Free music is in the sidebar and the phone menu (Settings is the gear button at the top)
+- Only freely licensed music is downloaded; albums without a free license are refused
+
 ## 0.2.0 - 2026-11-02
 
 Big update: bring your Spotify library into Freeify.

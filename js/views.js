@@ -29,7 +29,7 @@
         <button class="btn btn-primary btn-lg" data-act="import-files">${ic('upload')}<span>Add music files</span></button>
         <button class="btn btn-ghost btn-lg" data-act="import-folder">${ic('folder')}<span>Add a folder</span></button>
       </div>
-      <p class="hint"><a class="text-link" href="#/import">Import your playlists, likes, covers and artist pictures from Spotify</a></p>
+      <p class="hint"><a class="text-link" href="#/free">No music yet? Get free, legal music</a> · <a class="text-link" href="#/import">Import your playlists and likes from Spotify</a></p>
       <p class="hint">Or drag and drop songs and folders anywhere on this window.</p>
       <ul class="perks">
         <li>${ic('gift')}<div><strong>Free, for real</strong><span>No trials, no premium tier, no ads. Open source under the MIT license.</span></div></li>
@@ -433,6 +433,112 @@
       },
     };
   };
+
+  // ---------------------------------------------------------------- free music (Internet Archive)
+
+  function licenseBadge(url) {
+    const name = F.freemusic.licenseName(url);
+    return name ? `<a class="lic" href="${esc(url)}" target="_blank" rel="noopener" title="License">${esc(name)}</a>` : '';
+  }
+
+  V.free = function (query) {
+    query = query || '';
+    const remote = L.all().filter((t) => t.remote).length;
+    return {
+      html: `<div class="page free-page">
+        <h1 class="page-title">Free music</h1>
+        <p class="lead-sm">Free and legal downloads, with no ads and no account: music that artists released under Creative Commons
+          or public-domain licenses on the <a class="text-link" href="https://archive.org/details/netlabels" target="_blank" rel="noopener">Internet Archive</a>.
+          Downloaded songs are yours to keep and play offline.</p>
+        <form class="free-search" data-form="free-search" role="search">
+          ${ic('search')}<input class="input" id="free-q" name="q" value="${esc(query)}" placeholder="Search free music: artist, album or style (jazz, lo-fi, piano…)" autocomplete="off">
+          <button class="btn btn-primary btn-sm" type="submit">Search</button>
+        </form>
+        ${remote ? `<section class="set-card free-match">
+          <div><strong>Find free versions of your Spotify songs</strong>
+          <span>${U.plural(remote, 'song')} aren’t on this device. Freeify can look for free, legal releases of the same songs and download them.
+          Songs from big record labels are almost never free, so expect only a few matches.</span></div>
+          <button class="btn btn-ghost btn-sm" data-act="free-match">Find free versions</button>
+        </section>` : ''}
+        <h2 class="browse-title">${query ? `Results for “${esc(query)}”` : 'Popular free albums'}</h2>
+        <div id="free-results"><p class="muted pad">Loading…</p></div>
+      </div>`,
+      color: 'hsl(38 55% 28%)',
+      title: 'Free music',
+      mount: (root) => fillFreeResults(root, query),
+    };
+  };
+
+  async function fillFreeResults(root, query) {
+    const box = root.querySelector('#free-results');
+    if (!box) return;
+    try {
+      const r = await F.freemusic.search(query);
+      if (!root.contains(box)) return;
+      if (!r.albums.length) {
+        box.innerHTML = `<div class="empty-state">${ic('search')}<h3>No free music found</h3><p>Try a style like “jazz”, “ambient” or “rock”, or an artist name.</p></div>`;
+        return;
+      }
+      box.innerHTML = `<div class="cards grid-all">${r.albums.map((a) => `<a class="card" href="#/free/album/${encodeURIComponent(a.id)}">
+          <div class="card-art"><div class="cover"><img src="${esc(a.image)}" alt="" loading="lazy" draggable="false"></div></div>
+          <div class="card-title">${esc(a.title)}</div>
+          <div class="card-sub">${esc(a.artist)}</div>
+          <div class="card-lic">${esc(F.freemusic.licenseName(a.license))}</div>
+        </a>`).join('')}</div>`;
+    } catch (e) {
+      if (root.contains(box)) box.innerHTML = `<div class="empty-state">${ic('wifi_off')}<h3>Couldn’t load free music</h3><p>${esc(e.message)}</p><a class="btn btn-light" href="${esc(location.hash)}">Try again</a></div>`;
+    }
+  }
+
+  V.freeAlbum = function (id) {
+    return {
+      html: `<div class="page collection" id="free-album"><div class="empty-state"><p class="muted">Loading album…</p></div></div>`,
+      color: 'hsl(38 45% 26%)',
+      title: 'Free music',
+      mount: (root) => fillFreeAlbum(root, id),
+    };
+  };
+
+  async function fillFreeAlbum(root, id) {
+    const box = root.querySelector('#free-album');
+    if (!box) return;
+    let a;
+    try {
+      a = await F.freemusic.album(id);
+    } catch (e) {
+      if (root.contains(box)) box.innerHTML = `<div class="empty-state">${ic('note')}<h3>Couldn’t open this album</h3><p>${esc(e.message)}</p><a class="btn btn-light" href="#/free">Back to free music</a></div>`;
+      return;
+    }
+    if (!root.contains(box)) return;
+    V.freeAlbumData = a;
+    const have = F.freemusic.owned();
+    const missing = a.tracks.filter((t) => !have.has(t.id)).length;
+    const total = a.tracks.reduce((n, t) => n + (t.duration || 0), 0);
+    const playing = F.freemusic.previewing;
+    box.innerHTML = `${UI.hero({
+      cover: `<div class="cover hero-cover"><img src="${esc(a.image)}" alt="" draggable="false"></div>`,
+      kind: 'Free album',
+      title: a.title,
+      meta: `<strong>${esc(a.artist)}</strong>${a.year ? ` · ${a.year}` : ''} · ${U.plural(a.tracks.length, 'song')}${total ? `, <span class="muted">${U.fmtLong(total)}</span>` : ''} · ${licenseBadge(a.license)}`,
+      description: a.description,
+    })}
+      <div class="page-body">
+        <div class="action-bar">
+          ${missing ? `<button class="btn btn-primary" data-act="free-dl-album">${ic('upload')}<span>Download ${missing === a.tracks.length ? 'album' : `${missing} more`}</span></button>`
+            : `<span class="pill">${ic('check', 'inline')} In your library</span>`}
+          <a class="btn btn-ghost" href="${esc(a.page)}" target="_blank" rel="noopener">${ic('link')}<span>archive.org</span></a>
+        </div>
+        ${a.tracks.length ? `<div class="free-list">${a.tracks.map((t, i) => `<div class="free-row${have.has(t.id) ? ' owned' : ''}" data-tid="${esc(t.id)}">
+            <span class="n">${t.trackNo}</span>
+            <button class="icon-btn free-play${playing === t.id ? ' on' : ''}" data-act="free-preview" data-i="${i}" aria-label="Preview ${esc(t.title)}">${ic(playing === t.id ? 'pause' : 'play')}</button>
+            <div class="t-meta"><div class="t-title">${esc(t.title)}</div><div class="t-sub">${esc(t.artist)}</div></div>
+            <span class="dur">${t.duration ? U.fmtTime(t.duration) : ''}</span>
+            ${have.has(t.id) ? `<span class="got" title="In your library">${ic('check')}</span>`
+              : `<button class="icon-btn" data-act="free-dl" data-i="${i}" aria-label="Download ${esc(t.title)}" title="Download">${ic('arrow-down')}</button>`}
+          </div>`).join('')}</div>` : '<p class="empty">This album has no MP3 files to download.</p>'}
+        <p class="fine">Free under ${licenseBadge(a.license)} from the Internet Archive. Please credit the artist if you share it.</p>
+      </div>`;
+  }
 
   // ---------------------------------------------------------------- import (Spotify + artwork)
 

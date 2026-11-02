@@ -91,6 +91,8 @@
     [/^\/collection$/, 'collection'],
     [/^\/settings$/, 'settings'],
     [/^\/import$/, 'importer'],
+    [/^\/free\/album\/(.+)$/, 'freeAlbum'],
+    [/^\/free(?:\/q\/(.*))?$/, 'free'],
   ];
 
   function safeDecode(s) { try { return decodeURIComponent(s); } catch (e) { return s; } }
@@ -145,7 +147,7 @@
 
   function syncNav() {
     const name = route.name;
-    $$('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === name || (name === 'library' && a.dataset.nav === 'collection' && isMobile())));
+    $$('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === name || (name === 'freeAlbum' && a.dataset.nav === 'free') || (name === 'library' && a.dataset.nav === 'collection' && isMobile())));
     const hash = location.hash || '#/home';
     $$('.lib-item').forEach((a) => a.classList.toggle('active', a.getAttribute('href') === hash));
   }
@@ -324,6 +326,8 @@
       t.album && albumId ? ['Album', `<a href="#/album/${albumId}">${esc(t.album)}</a>`] : null,
       t.year ? ['Year', t.year] : null,
       t.genre ? ['Genre', esc(t.genre)] : null,
+      t.license ? ['License', `<a href="${esc(t.license)}" target="_blank" rel="noopener">${esc(F.freemusic.licenseName(t.license))}</a>`] : null,
+      t.sourceUrl ? ['Source', `<a href="${esc(t.sourceUrl)}" target="_blank" rel="noopener">${t.source === 'archive' ? 'Internet Archive' : 'Website'}</a>`] : null,
       ['Plays', (t.playCount || 0).toLocaleString()],
       ['File', `<span class="file-name">${esc(t.fileName)}</span> · ${U.fmtBytes(t.size)}`],
     ].filter(Boolean);
@@ -585,6 +589,7 @@
       { label: 'Add music files…', icon: 'upload', run: () => el.fileInput.click() },
       { label: 'Add a folder…', icon: 'folder', run: () => el.folderInput.click() },
       { sep: true },
+      { label: 'Get free music…', icon: 'gift', run: () => go('#/free') },
       { label: 'Import from Spotify…', icon: 'link', run: () => go('#/import') },
       { label: 'Find missing pictures', icon: 'image', run: () => findArtwork() },
     ], anchor);
@@ -789,6 +794,49 @@
     }
   }
 
+  // ---------------------------------------------------------------- free music
+
+  async function freeDownload(tracks, label) {
+    showProgress('Downloading free music', 0, tracks.length, label || '');
+    try {
+      const r = await F.freemusic.download(tracks, (done, total, title) => showProgress('Downloading free music', done, total, title));
+      const got = r.added + r.matched;
+      if (got) toast(`Downloaded ${U.plural(got, 'song')} to your library${r.matched ? ` (${r.matched} of them from your Spotify import)` : ''}`, { action: { label: 'View', run: () => go('#/library') } });
+      else if (r.skipped && !r.failed) toast('Already in your library');
+      if (r.failed) toast(`${U.plural(r.failed, 'song')} couldn’t be downloaded. Check your internet connection and try again.`, { kind: 'error', duration: 6000 });
+    } catch (e) {
+      toast('Download failed: ' + e.message, { kind: 'error' });
+    } finally {
+      hideProgress();
+      if (route.name === 'freeAlbum') render(true);
+    }
+  }
+
+  async function findFreeVersions() {
+    showProgress('Looking for free versions', 0, 0, 'Starting…');
+    try {
+      const r = await F.freemusic.findFreeVersions((done, total, artist) => showProgress('Looking for free versions', done, total, artist));
+      toast(r.added
+        ? `Found and downloaded ${U.plural(r.added, 'free song')} out of ${r.checked}.`
+        : `Checked ${U.plural(r.checked, 'song')}: none of them are released for free.`, { duration: 7000 });
+    } catch (e) {
+      toast('Search failed: ' + e.message, { kind: 'error' });
+    } finally {
+      hideProgress();
+      if (route.name === 'free') render(true);
+    }
+  }
+
+  function syncPreview(id, playing) {
+    $$('.free-row').forEach((row) => {
+      const on = playing && row.dataset.tid === id;
+      const btn = row.querySelector('.free-play');
+      if (!btn) return;
+      btn.classList.toggle('on', on);
+      btn.innerHTML = ic(on ? 'pause' : 'play');
+    });
+  }
+
   function remoteToast(t) {
     toast(`“${t.title}” isn’t on this device yet. Add the song file to play it here.`, {
       duration: 6000,
@@ -915,6 +963,10 @@
     'sp-import': () => runSpotifyImport(),
     'sp-export-files': () => { const i = $('#sp-export-input'); if (i) i.click(); },
     'art-find': () => findArtwork(),
+    'free-preview': (b) => { const a = V.freeAlbumData; if (a && a.tracks[+b.dataset.i]) F.freemusic.preview(a.tracks[+b.dataset.i]); },
+    'free-dl': (b) => { const a = V.freeAlbumData; const t = a && a.tracks[+b.dataset.i]; if (t) freeDownload([t], t.title); },
+    'free-dl-album': () => { const a = V.freeAlbumData; if (a) freeDownload(a.tracks, a.title); },
+    'free-match': () => findFreeVersions(),
     'toggle-local-only': () => { F.settings.localOnly = !F.settings.localOnly; store.set('localOnly', F.settings.localOnly); render(true); },
 
     'back': () => history.back(),
@@ -1152,6 +1204,13 @@
     document.addEventListener('contextmenu', onContextMenu);
     document.addEventListener('keydown', onKey);
     document.addEventListener('submit', (e) => {
+      const free = e.target.closest('[data-form="free-search"]');
+      if (free) {
+        e.preventDefault();
+        const q = free.elements.q.value.trim();
+        go(q ? `#/free/q/${encodeURIComponent(q)}` : '#/free');
+        return;
+      }
       const form = e.target.closest('[data-form="sp-connect"]');
       if (!form) return;
       e.preventDefault();
@@ -1253,6 +1312,8 @@
     applyAccent(F.settings.accent);
 
     P.on('track', syncTrack);
+    F.freemusic.onPreview(syncPreview);
+    P.on('state', () => { if (P.playing) F.freemusic.stopPreview(); });
     P.on('state', syncState);
     P.on('time', syncTime);
     P.on('mode', syncMode);

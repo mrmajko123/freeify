@@ -41,6 +41,15 @@ Get the latest version from the **[Releases page](https://github.com/mrmajko123/
 The release notes explain the one-time warnings you may see, because the installers are not
 code-signed (signing certificates cost money).
 
+## Free music
+
+Open **Free music** to search and download songs that artists released for free under Creative
+Commons or public-domain licenses on the [Internet Archive](https://archive.org/details/netlabels):
+no ads, no account, and the files stay in your library to play offline. Each song keeps its license
+and a link to where it came from. **Find free versions of your Spotify songs** checks whether any of
+your greyed-out Spotify songs have a free release and downloads exact matches. (Most songs from big
+record labels aren't free, so expect a few matches rather than many.)
+
 ## Bring your Spotify library
 
 Open **Import** (in the **Add music** menu or Settings). Freeify can bring in your Liked Songs, your
@@ -131,6 +140,7 @@ js/db.js              IndexedDB storage
 js/library.js         Tracks, albums, artists, playlists, search, import, Spotify matching
 js/spotify.js         Spotify sign-in (PKCE), library import, data-export import
 js/artwork.js         Finds missing album covers and artist pictures
+js/freemusic.js       Free, legal music search and downloads (Internet Archive)
 js/player.js          Playback engine: queue, shuffle, repeat, media keys
 js/ui.js              Shared UI pieces: track lists, cards, menus, dialogs
 js/views.js           Pages: home, search, library, album, artist, playlist, settings
