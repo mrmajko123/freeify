@@ -11,4 +11,6 @@
 | iPhone / iPad | `Freeify-…-iPhone-unsigned.ipa` | Apple requires signing: install it with your Apple ID using AltStore or Sideloadly. Simpler: open the web version in Safari, then **Share → Add to Home Screen**. |
 | Any computer, no install | `Freeify-…-Web.zip` | Unzip it and open `index.html` in your browser. |
 
+The iPhone file is added a little after the others, once its build finishes.
+
 Your music stays on your device: each app keeps its own library.

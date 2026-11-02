@@ -167,9 +167,12 @@ jobs:
           if-no-files-found: error
 
   ios:
+    # Runs alongside everything else; the release doesn't wait for it. Mac machines often have a
+    # queue, so the iPhone app is attached to the release whenever this finishes.
     needs: check
     if: needs.check.outputs.release == 'true'
     runs-on: macos-latest
+    timeout-minutes: 90
     env:
       V: ${{ needs.check.outputs.version }}
       CODE: ${{ needs.check.outputs.code }}
@@ -194,15 +197,23 @@ jobs:
           mkdir -p Payload "$GITHUB_WORKSPACE/out"
           cp -R build/Build/Products/Release-iphoneos/App.app Payload/
           zip -qr "$GITHUB_WORKSPACE/out/Freeify-$V-iPhone-unsigned.ipa" Payload
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ios
-          path: out/*
-          if-no-files-found: error
+      - name: Add the iPhone app to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in $(seq 1 120); do
+            if gh release view "v$V" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+              gh release upload "v$V" out/*.ipa --repo "$GITHUB_REPOSITORY" --clobber
+              exit 0
+            fi
+            sleep 30
+          done
+          echo "The release was not published, so the iPhone app was not attached."
+          exit 1
 
   release:
-    needs: [check, test, web, desktop, android, ios]
-    # iPhone is best-effort: the release still ships if only that build fails.
+    # Publishes as soon as the tests and the Windows, Mac, Linux, Android and web builds are done.
+    needs: [check, test, web, desktop, android]
     if: >-
       !cancelled() && needs.check.outputs.release == 'true' &&
       needs.test.result == 'success' && needs.web.result == 'success' &&
