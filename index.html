@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="Freeify: a free, private music player for the MP3s you already own. No ads, no accounts, no subscriptions.">
+  <title>Freeify</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="app" id="app">
+    <!-- Left sidebar -->
+    <aside class="sidebar">
+      <nav class="panel nav" aria-label="Main">
+        <a class="brand" href="#/home" aria-label="Freeify home">
+          <span class="brand-mark" data-icon="logo"></span>
+          <span class="brand-name">Freeify</span>
+        </a>
+        <a class="nav-link" href="#/home" data-nav="home"><span data-icon="home"></span>Home</a>
+        <a class="nav-link" href="#/search" data-nav="search"><span data-icon="search"></span>Search</a>
+      </nav>
+      <section class="panel lib" aria-label="Your Library">
+        <header class="lib-head">
+          <a class="lib-title" href="#/collection"><span data-icon="library"></span>Your Library</a>
+          <div class="lib-actions">
+            <button class="icon-btn" data-act="new-playlist" title="Create playlist" aria-label="Create playlist"><span data-icon="plus"></span></button>
+            <button class="icon-btn" data-act="import-menu" title="Add music" aria-label="Add music"><span data-icon="upload"></span></button>
+          </div>
+        </header>
+        <div class="chips" id="lib-chips" role="tablist"></div>
+        <div class="lib-list" id="lib-list"></div>
+      </section>
+    </aside>
+
+    <!-- Main content -->
+    <main class="panel main" id="main">
+      <div class="main-scroll" id="main-scroll">
+        <header class="topbar" id="topbar">
+          <div class="topbar-nav">
+            <button class="round-btn" data-act="back" aria-label="Go back"><span data-icon="chevron-left"></span></button>
+            <button class="round-btn" data-act="forward" aria-label="Go forward"><span data-icon="chevron-right"></span></button>
+          </div>
+          <div class="topbar-ctx" id="topbar-ctx"></div>
+          <div class="topbar-search" id="topbar-search" hidden>
+            <span data-icon="search"></span>
+            <input id="search-input" type="search" placeholder="What do you want to listen to?" autocomplete="off" spellcheck="false" aria-label="Search your music">
+          </div>
+          <div class="topbar-right">
+            <button class="pill-btn light" data-act="install" id="install-btn" hidden><span data-icon="upload"></span><span class="label">Install app</span></button>
+            <button class="pill-btn" data-act="import-menu"><span data-icon="plus"></span><span class="label">Add music</span></button>
+            <a class="round-btn" href="#/settings" aria-label="Settings" title="Settings"><span data-icon="settings"></span></a>
+          </div>
+        </header>
+        <div class="view" id="view"></div>
+      </div>
+    </main>
+
+    <!-- Right panel: now playing / queue -->
+    <aside class="panel right" id="right" hidden aria-label="Now playing and queue">
+      <header class="right-head">
+        <div class="tabs" role="tablist">
+          <button class="tab" data-act="right-tab" data-tab="np" role="tab">Now playing</button>
+          <button class="tab" data-act="right-tab" data-tab="queue" role="tab">Queue</button>
+        </div>
+        <button class="icon-btn" data-act="close-right" aria-label="Close panel"><span data-icon="close"></span></button>
+      </header>
+      <div class="right-body" id="right-body"></div>
+    </aside>
+
+    <!-- Player bar -->
+    <footer class="player" id="player" aria-label="Player">
+      <div class="np" data-act="open-full-mobile">
+        <div class="np-cover js-cover"></div>
+        <div class="np-meta">
+          <a class="np-title js-title" href="#"></a>
+          <div class="np-artist js-artist"></div>
+        </div>
+        <button class="icon-btn like js-like" data-act="like-current" aria-label="Save to Liked Songs"><span data-icon="heart"></span></button>
+      </div>
+      <div class="controls">
+        <div class="buttons">
+          <button class="icon-btn js-shuffle" data-act="shuffle" aria-label="Shuffle" title="Shuffle (S)"><span data-icon="shuffle"></span></button>
+          <button class="icon-btn" data-act="prev" aria-label="Previous" title="Previous (Shift+←)"><span data-icon="prev"></span></button>
+          <button class="play-btn js-play" data-act="toggle" aria-label="Play" title="Play / Pause (Space)"><span data-icon="play"></span></button>
+          <button class="icon-btn" data-act="next" aria-label="Next" title="Next (Shift+→)"><span data-icon="next"></span></button>
+          <button class="icon-btn js-repeat" data-act="repeat" aria-label="Repeat" title="Repeat (R)"><span data-icon="repeat"></span></button>
+        </div>
+        <div class="seek">
+          <span class="time js-cur">0:00</span>
+          <input class="range js-seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Seek">
+          <span class="time js-dur">0:00</span>
+        </div>
+      </div>
+      <div class="extras">
+        <button class="icon-btn js-lyrics-btn" data-act="show-lyrics" aria-label="Lyrics" title="Lyrics"><span data-icon="mic"></span></button>
+        <button class="icon-btn js-queue-btn" data-act="toggle-queue" aria-label="Queue" title="Queue (Q)"><span data-icon="queue"></span></button>
+        <button class="icon-btn js-mute" data-act="mute" aria-label="Mute" title="Mute (M)"><span data-icon="volume-high"></span></button>
+        <input class="range vol js-vol" type="range" min="0" max="1" step="0.01" value="0.8" aria-label="Volume">
+        <button class="icon-btn" data-act="open-full" aria-label="Full screen player" title="Full screen"><span data-icon="expand"></span></button>
+      </div>
+      <div class="mini-progress"><div class="js-mini-bar"></div></div>
+    </footer>
+
+    <!-- Mobile bottom navigation -->
+    <nav class="mobile-nav" aria-label="Mobile">
+      <a href="#/home" data-nav="home"><span data-icon="home"></span>Home</a>
+      <a href="#/search" data-nav="search"><span data-icon="search"></span>Search</a>
+      <a href="#/collection" data-nav="collection"><span data-icon="library"></span>Your Library</a>
+      <a href="#/settings" data-nav="settings"><span data-icon="settings"></span>Settings</a>
+    </nav>
+  </div>
+
+  <!-- Full screen player -->
+  <div class="full" id="full" hidden role="dialog" aria-label="Now playing">
+    <div class="full-bg" id="full-bg"></div>
+    <header class="full-head">
+      <button class="icon-btn" data-act="close-full" aria-label="Close"><span data-icon="chevron-down"></span></button>
+      <div class="full-ctx"><small>Playing from</small><a id="full-ctx" href="#"></a></div>
+      <button class="icon-btn" data-act="current-menu" aria-label="More options"><span data-icon="more"></span></button>
+    </header>
+    <div class="full-stage">
+      <div class="full-cover js-cover"></div>
+      <div class="full-lyrics" id="full-lyrics" hidden></div>
+    </div>
+    <div class="full-bottom">
+      <div class="full-info">
+        <div class="full-meta">
+          <a class="full-title js-title" href="#"></a>
+          <div class="full-artist js-artist"></div>
+        </div>
+        <button class="icon-btn like js-like" data-act="like-current" aria-label="Save to Liked Songs"><span data-icon="heart"></span></button>
+      </div>
+      <div class="seek">
+        <input class="range js-seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Seek">
+        <div class="seek-times"><span class="time js-cur">0:00</span><span class="time js-dur">0:00</span></div>
+      </div>
+      <div class="full-controls">
+        <button class="icon-btn js-shuffle" data-act="shuffle" aria-label="Shuffle"><span data-icon="shuffle"></span></button>
+        <button class="icon-btn big" data-act="prev" aria-label="Previous"><span data-icon="prev"></span></button>
+        <button class="play-btn huge js-play" data-act="toggle" aria-label="Play"><span data-icon="play"></span></button>
+        <button class="icon-btn big" data-act="next" aria-label="Next"><span data-icon="next"></span></button>
+        <button class="icon-btn js-repeat" data-act="repeat" aria-label="Repeat"><span data-icon="repeat"></span></button>
+      </div>
+      <div class="full-extras">
+        <button class="icon-btn js-lyrics-toggle" data-act="toggle-full-lyrics" aria-label="Lyrics"><span data-icon="mic"></span></button>
+        <button class="icon-btn js-sleep" data-act="sleep-menu" aria-label="Sleep timer"><span data-icon="moon"></span></button>
+        <button class="icon-btn" data-act="full-queue" aria-label="Queue"><span data-icon="queue"></span></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="dropzone" id="dropzone" hidden>
+    <div class="dropzone-inner"><span data-icon="upload"></span><strong>Drop to add to your library</strong><small>MP3 files, whole folders, and .lrc lyrics</small></div>
+  </div>
+  <div class="import-card" id="import-card" hidden aria-live="polite"></div>
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <div class="menu" id="menu" hidden role="menu"></div>
+  <dialog class="dialog" id="dialog"></dialog>
+
+  <input type="file" id="file-input" accept="audio/*,.mp3,.m4a,.aac,.flac,.ogg,.oga,.opus,.wav,.webm,.lrc" multiple hidden>
+  <input type="file" id="folder-input" webkitdirectory directory multiple hidden>
+
+  <script src="js/icons.js"></script>
+  <script src="js/util.js"></script>
+  <script src="js/tags.js"></script>
+  <script src="js/db.js"></script>
+  <script src="js/library.js"></script>
+  <script src="js/player.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/views.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
