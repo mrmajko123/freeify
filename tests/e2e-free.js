@@ -120,9 +120,11 @@ async function mockArchive(ctx, log) {
   await page.fill('#free-q', 'lakeside (live)');
   await page.press('#free-q', 'Enter');
   await page.waitForFunction(() => location.hash === '#/free/q/lakeside%20(live)');
-  await page.waitForSelector('#free-results .card:has-text("Lakeside Sessions")');
+  // Wait for the new results page (the album card was already on the previous page too).
+  await page.waitForSelector('.browse-title:has-text("lakeside (live)")');
+  await page.waitForFunction(() => document.querySelectorAll('#free-results .card').length === 1);
   check(!log.search[log.search.length - 1].includes('(live)'), 'search text is cleaned before querying');
-  check((await page.textContent('.browse-title')).includes('lakeside (live)'), 'search results title');
+  check((await page.textContent('#free-results')).includes('Lakeside Sessions'), 'search results show the matching album');
 
   // Album page.
   await page.click('#free-results .card:has-text("Lakeside Sessions")');

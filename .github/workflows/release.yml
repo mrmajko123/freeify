@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -202,9 +203,18 @@ jobs:
               gh release upload "v$V" out/*.ipa --repo "$GITHUB_REPOSITORY" --clobber
               exit 0
             fi
+            # Stop waiting as soon as it's clear the release won't be published in this run.
+            state=$(gh run view "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --json jobs \
+              --jq '[.jobs[] | select(.name == "release")][0] | "\(.status):\(.conclusion)"' 2>/dev/null || true)
+            case "$state" in
+              completed:success) ;;
+              completed:*)
+                echo "::error::The iPhone app built fine, but the release wasn't published because another step failed (see the other jobs). Fix that, then use 'Re-run failed jobs'."
+                exit 1 ;;
+            esac
             sleep 30
           done
-          echo "The release was not published, so the iPhone app was not attached."
+          echo "::error::The release was not published within an hour, so the iPhone app was not attached."
           exit 1
 
   release:
