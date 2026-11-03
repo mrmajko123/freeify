@@ -41,6 +41,14 @@ Get the latest version from the **[Releases page](https://github.com/mrmajko123/
 The release notes explain the one-time warnings you may see, because the installers are not
 code-signed (signing certificates cost money).
 
+## Search everywhere
+
+Search shows three things at once: matches **in your library**, songs and albums that are **free to
+download** (Internet Archive and Jamendo, each with a **Download** button), and, when Spotify is
+connected, songs **from Spotify's catalog** with a **Save** button. Saved Spotify songs are added to your
+library and Freeify automatically downloads a free, legal version if one exists; otherwise they stay
+greyed out with "Open in Spotify" (Spotify's own audio is copy-protected).
+
 ## Free music
 
 Open **Free music** to search and download songs that artists released for free under Creative

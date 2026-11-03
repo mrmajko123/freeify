@@ -405,8 +405,10 @@
   }
 
   /** Spotify catalog search (used to find missing covers and artist pictures). */
-  async function search(type, query) {
-    const json = await api(`/search?type=${type}&limit=5&q=${encodeURIComponent(query)}`);
+  /** Spotify catalog search. Development-mode apps get at most 10 results per request. */
+  async function search(type, query, limit) {
+    const n = Math.max(1, Math.min(10, limit || 5));
+    const json = await api(`/search?type=${type}&limit=${n}&q=${encodeURIComponent(query)}`);
     return (json && json[`${type}s`] && json[`${type}s`].items) || [];
   }
 
@@ -418,6 +420,6 @@
 
   F.spotify = {
     state, connected, connect, disconnect, handleRedirect, redirectInfo, isDesktopApp, isPhoneApp,
-    importLibrary, importExport, search, pickImage, openUrl, DESKTOP_REDIRECT,
+    importLibrary, importExport, search, pickImage, openUrl, mapTrack, DESKTOP_REDIRECT,
   };
 })(window.Freeify = window.Freeify || {});

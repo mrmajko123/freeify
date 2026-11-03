@@ -1,5 +1,5 @@
 /* Freeify service worker: caches the app shell so it opens offline. Your music lives in IndexedDB, not here. */
-const CACHE = 'freeify-0.3.2';
+const CACHE = 'freeify-0.4.0';
 const SHELL = [
   './',
   './index.html',

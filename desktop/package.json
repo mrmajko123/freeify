@@ -1,7 +1,7 @@
 {
   "name": "freeify-desktop",
   "productName": "Freeify",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "description": "A free, private music player for the music you own.",
   "main": "main.js",
   "private": true,

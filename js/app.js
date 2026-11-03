@@ -1037,6 +1037,27 @@
     'art-find': () => findArtwork(),
     'free-preview': (b) => { const t = freeTrack(b); if (t) F.freemusic.preview(t); },
     'free-dl': (b) => { const t = freeTrack(b); if (t) freeDownload([t], t.title); },
+    'sp-save': async (b) => {
+      const item = (V.spResults || [])[+b.dataset.i];
+      if (!item) return;
+      b.disabled = true;
+      try {
+        await L.addSpotify({ tracks: [F.spotify.mapTrack(item)] });
+        const t = L.all().find((x) => x.spotifyId === item.id);
+        if (t && !t.remote) toast(`“${t.title}” is already in your library`);
+        else {
+          toast(F.settings.autoFree
+            ? `Saved “${item.name}”. Freeify is checking for a free version to download.`
+            : `Saved “${item.name}” to your library.`, {
+            duration: 6000, action: { label: 'Open in Spotify', run: () => window.open(F.spotify.openUrl({ spotifyId: item.id }), '_blank', 'noopener') },
+          });
+          scheduleAutoFree(300);
+        }
+      } catch (e) {
+        b.disabled = false;
+        toast('Couldn’t save: ' + e.message, { kind: 'error' });
+      }
+    },
     'jam-remove': async () => { await F.freemusic.setJamendoId(''); toast('Jamendo removed'); render(true); },
     'free-dl-album': () => { const a = V.freeAlbumData; if (a) freeDownload(a.tracks, a.title); },
     'free-match': () => findFreeVersions(),

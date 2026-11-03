@@ -2,6 +2,20 @@
 
 Freeify version numbers: small updates add 0.0.1 (0.1.0 → 0.1.1), big updates add 0.1 (0.1.x → 0.2.0).
 
+## 0.4.0 - 2026-11-03
+
+Big update: search everywhere.
+
+- **Search now looks beyond your library.** Results come in three parts:
+  - **In your library**: your songs, albums and artists, as before
+  - **Free to download**: songs and albums from the Internet Archive and Jamendo, with a **Download**
+    button that saves the real file into your library
+  - **From Spotify** (when connected): songs from Spotify's whole catalog with a **Save** button. Saved
+    songs are added to your library, and Freeify straight away looks for a free, legal version to
+    download automatically. Songs without one stay greyed out with "Open in Spotify"
+- Songs you already have are marked in the outside results
+- Outside sources are searched once you stop typing, not on every key press
+
 ## 0.3.2 - 2026-11-02
 
 - **Automatic free downloads**: when a song in your library that isn't on this device (for example

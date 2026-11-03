@@ -318,12 +318,108 @@
     query = (query || '').trim();
     if (!query) return browse();
     const r = L.search(query);
-    if (!r.tracks.length && !r.albums.length && !r.artists.length) {
-      return {
-        html: `<div class="page"><div class="empty-state">${ic('search')}<h3>No results found for “${esc(query)}”</h3><p>Check the spelling, or try fewer or different keywords.</p></div></div>`,
-        color: null, title: 'Search',
+    const hasLocal = r.tracks.length || r.albums.length || r.artists.length;
+    const local = hasLocal ? localResults(query, r) : `<p class="muted pad">Nothing in your library matches “${esc(query)}”. Here’s what Freeify found elsewhere:</p>`;
+    return {
+      html: `<div class="page search-page">
+        <h2 class="search-where">${ic('library')} In your library</h2>
+        ${local}
+        <section class="ext" id="ext-free">
+          <h2 class="search-where">${ic('arrow-down')} Free to download <small class="src">Internet Archive${F.freemusic.jamendoId() ? ' · Jamendo' : ''}</small></h2>
+          <div class="ext-body"><p class="muted pad">Searching…</p></div>
+        </section>
+        <section class="ext" id="ext-sp">
+          <h2 class="search-where">${ic('link')} From Spotify</h2>
+          <div class="ext-body">${F.spotify.connected() ? '<p class="muted pad">Searching…</p>'
+            : '<p class="notice">Connect Spotify on the <a href="#/import">Import</a> page to also search Spotify’s whole catalog and save songs to your library.</p>'}</div>
+        </section>
+      </div>`,
+      color: null,
+      title: 'Search',
+      mount: (root) => fillExternal(root, query),
+    };
+  };
+
+  // ---- results from outside the library (free sources + Spotify catalog)
+
+  const extCache = new Map();
+  let extToken = 0;
+  const pause = (ms) => new Promise((res) => setTimeout(res, ms));
+
+  async function fillExternal(root, query) {
+    const token = ++extToken;
+    const key = U.fold(query);
+    let cached = extCache.get(key);
+    if (!cached) {
+      // Wait until typing pauses so every keystroke doesn't search the internet.
+      await pause(450);
+      if (token !== extToken || !root.querySelector('#ext-free')) return;
+      cached = {
+        free: Promise.all([
+          F.freemusic.search(query).then((x) => x.albums).catch((e) => ({ error: e.message })),
+          F.freemusic.jamSearch(query).catch((e) => ({ error: e.message })),
+        ]),
+        sp: F.spotify.connected() ? F.spotify.search('track', query, 10).catch((e) => ({ error: e.message })) : Promise.resolve(null),
       };
+      extCache.set(key, cached);
+      if (extCache.size > 30) extCache.delete(extCache.keys().next().value);
     }
+    const [albums, jam] = await cached.free;
+    if (token === extToken) renderFree(root, albums, jam);
+    const sp = await cached.sp;
+    if (token === extToken) renderSpotify(root, sp);
+  }
+
+  function renderFree(root, albums, jam) {
+    const box = root.querySelector('#ext-free .ext-body');
+    if (!box) return;
+    const have = F.freemusic.owned();
+    const songs = Array.isArray(jam) ? jam.slice(0, 8) : [];
+    const cards = Array.isArray(albums) ? albums.slice(0, 8) : [];
+    V.freeLists = Object.assign(V.freeLists || {}, { jamsearch: songs });
+    const errors = [albums, jam].filter((x) => x && x.error).map((x) => x.error);
+    if (!songs.length && !cards.length) {
+      box.innerHTML = errors.length ? `<p class="notice">${esc(errors[0])}</p>` : '<p class="muted pad">No free downloads match this search.</p>';
+      return;
+    }
+    box.innerHTML = `${songs.length ? `<div class="free-list">${songs.map((t, i) => freeRow(t, i, 'jamsearch', have, F.freemusic.previewing, { cover: true })).join('')}</div>` : ''}
+      ${cards.length ? `<h3 class="ext-sub">Free albums</h3><div class="cards grid-all">${cards.map((a) => `<a class="card" href="#/free/album/${encodeURIComponent(a.id)}">
+          <div class="card-art"><div class="cover"><img src="${esc(a.image)}" alt="" loading="lazy" draggable="false"></div></div>
+          <div class="card-title">${esc(a.title)}</div><div class="card-sub">${esc(a.artist)}</div>
+          <div class="card-lic">${esc(F.freemusic.licenseName(a.license))}</div></a>`).join('')}</div>` : ''}`;
+  }
+
+  function renderSpotify(root, items) {
+    const box = root.querySelector('#ext-sp .ext-body');
+    if (!box || items == null) return;
+    if (items.error) { box.innerHTML = `<p class="notice">${esc(items.error)}</p>`; return; }
+    V.spResults = items;
+    if (!items.length) { box.innerHTML = '<p class="muted pad">No songs found on Spotify.</p>'; return; }
+    const bySp = new Map();
+    const byKey = new Map();
+    for (const t of L.all()) {
+      if (t.spotifyId) bySp.set(t.spotifyId, t);
+      byKey.set(L.matchKey(t.title, L.primaryArtist(t)), t);
+    }
+    box.innerHTML = `<div class="free-list">${items.map((it, i) => {
+      const artists = (it.artists || []).map((a) => a.name).join(', ');
+      const mine = bySp.get(it.id) || byKey.get(L.matchKey(it.name, (it.artists && it.artists[0] && it.artists[0].name) || ''));
+      const img = F.spotify.pickImage(it.album && it.album.images, 64);
+      const status = mine
+        ? (mine.remote ? `<span class="ext-state" title="Saved: not on this device yet">${ic('cloud')}</span>` : `<span class="got" title="In your library">${ic('check')}</span>`)
+        : `<button class="btn btn-ghost btn-sm" data-act="sp-save" data-i="${i}">${ic('plus')}<span>Save</span></button>`;
+      return `<div class="ext-row" data-sp="${esc(it.id)}">
+        <div class="cover sm">${img ? `<img src="${esc(img)}" alt="" loading="lazy" draggable="false">` : ic('note')}</div>
+        <div class="t-meta"><div class="t-title">${esc(it.name)}</div><div class="t-sub">${esc(artists)}${it.album ? ` · ${esc(it.album.name)}` : ''}</div></div>
+        <span class="dur">${it.duration_ms ? U.fmtTime(it.duration_ms / 1000) : ''}</span>
+        <a class="icon-btn" href="${esc(F.spotify.openUrl({ spotifyId: it.id }))}" target="_blank" rel="noopener" title="Open in Spotify" aria-label="Open ${esc(it.name)} in Spotify">${ic('link')}</a>
+        ${status}
+      </div>`;
+    }).join('')}</div>
+    <p class="fine">Spotify’s songs are copy-protected, so saved songs show greyed out until a free version is found or you add the file yourself.</p>`;
+  }
+
+  function localResults(query, r) {
     const ctx = { type: 'search', id: query, name: `Search: ${query}`, href: `#/search/${encodeURIComponent(query)}` };
     let topHtml = '';
     if (r.top) {
@@ -343,20 +439,14 @@
     }
     const songs = UI.trackList('search', r.tracks, { ctx, album: false, header: false, sortable: false, limit: 4 });
     const all = r.tracks.length > 4 ? `<section class="shelf"><header class="shelf-head"><h2>All songs</h2></header>${UI.trackList('search-all', r.tracks, { ctx, album: true })}</section>` : '';
-    return {
-      html: `<div class="page search-page">
-        <div class="search-top">
+    return `<div class="search-top">
           <section class="top-col"><h2>Top result</h2>${topHtml}</section>
           <section class="songs-col"><h2>Songs</h2>${songs || '<p class="muted">No songs match.</p>'}</section>
         </div>
         ${r.artists.length ? UI.shelf('Artists', null, r.artists.slice(0, MAX_SHELF).map((a) => UI.ctxCard(UI.ctx('artist', a.id)))) : ''}
         ${r.albums.length ? UI.shelf('Albums', null, r.albums.slice(0, MAX_SHELF).map((a) => UI.ctxCard(UI.ctx('album', a.id), a.artist))) : ''}
-        ${all}
-      </div>`,
-      color: null,
-      title: 'Search',
-    };
-  };
+        ${all}`;
+  }
 
   function browse() {
     const tiles = [];

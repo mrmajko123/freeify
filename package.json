@@ -1,13 +1,13 @@
 {
   "name": "freeify",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "private": true,
   "description": "A free, private, Spotify-style music player for the MP3s you already own. No ads, no accounts, no build step.",
   "license": "MIT",
   "scripts": {
     "start": "node tests/serve.js 8080",
     "fixtures": "bash tests/make-fixtures.sh",
-    "test": "bash tests/make-fixtures.sh && node tests/e2e.js && node tests/e2e-spotify.js && node tests/e2e-free.js && node tests/e2e-sources.js",
+    "test": "bash tests/make-fixtures.sh && node tests/e2e.js && node tests/e2e-spotify.js && node tests/e2e-free.js && node tests/e2e-sources.js && node tests/e2e-search.js",
     "version:patch": "node scripts/bump.js patch",
     "version:minor": "node scripts/bump.js minor",
     "web": "node scripts/prepare-web.js build/www"
